@@ -21,8 +21,11 @@ const player = usePlayerStore();
 const showVolume = ref(false);
 
 const playModeIcon = computed(() => {
-  if (player.playMode === "random") return ShuffleOutline;
-  return RepeatOutline;
+  switch (player.playMode) {
+    case "random": return ShuffleOutline;
+    case "loop": return RepeatOutline;
+    default: return RepeatOutline;
+  }
 });
 
 const playModeTitle = computed(() => {
@@ -102,6 +105,7 @@ const currentLine = computed(() => {
           @click="player.togglePlayMode()"
         >
           <NIcon size="16"><component :is="playModeIcon" /></NIcon>
+          <span v-if="player.playMode === 'loop'" class="loop-badge">1</span>
         </button>
         <div
           class="volume-wrapper"
@@ -264,6 +268,7 @@ const currentLine = computed(() => {
 }
 
 .ctrl-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -278,6 +283,16 @@ const currentLine = computed(() => {
 
 .ctrl-btn.small:hover {
   background: var(--card-hover);
+}
+
+.loop-badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent-color);
 }
 
 .ctrl-btn.play-btn {

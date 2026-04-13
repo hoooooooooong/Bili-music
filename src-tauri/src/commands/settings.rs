@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 use crate::core::converter::AudioConverter;
+use crate::core::ffmpeg_path::FfmpegPath;
 use crate::config::get_default_output_dir;
 use crate::error::AppResult;
 
@@ -73,11 +74,9 @@ pub async fn pick_directory(app_handle: AppHandle) -> AppResult<Option<String>> 
 }
 
 #[tauri::command]
-pub async fn check_tools() -> AppResult<serde_json::Value> {
-    let ffmpeg = AudioConverter::check_ffmpeg().await;
-    let ytdlp = AudioConverter::check_yt_dlp().await;
+pub async fn check_tools(ffmpeg_path: State<'_, FfmpegPath>) -> AppResult<serde_json::Value> {
+    let ffmpeg = AudioConverter::check_ffmpeg(&ffmpeg_path.0).await;
     Ok(serde_json::json!({
         "ffmpeg": ffmpeg,
-        "ytdlp": ytdlp,
     }))
 }

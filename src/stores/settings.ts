@@ -70,8 +70,8 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
-  async function checkTools(): Promise<{ ffmpeg: boolean; ytdlp: boolean }> {
-    return await invoke<{ ffmpeg: boolean; ytdlp: boolean }>("check_tools");
+  async function checkTools(): Promise<{ ffmpeg: boolean }> {
+    return await invoke<{ ffmpeg: boolean }>("check_tools");
   }
 
   return {

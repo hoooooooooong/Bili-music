@@ -22,16 +22,13 @@ const settingsStore = useSettingsStore();
 const message = useMessage();
 
 const ffmpegOk = ref(false);
-const ytdlpOk = ref(false);
 
 async function checkTools() {
   try {
     const result = await settingsStore.checkTools();
     ffmpegOk.value = result.ffmpeg;
-    ytdlpOk.value = result.ytdlp;
   } catch {
     ffmpegOk.value = false;
-    ytdlpOk.value = false;
   }
 }
 
@@ -111,7 +108,7 @@ onMounted(() => {
       </div>
 
       <div class="settings-section">
-        <h3 class="section-title">外部工具</h3>
+        <h3 class="section-title">内置工具</h3>
         <div class="setting-item">
           <span class="setting-label">ffmpeg</span>
           <NTag :type="ffmpegOk ? 'success' : 'error'" size="small">
@@ -121,19 +118,7 @@ onMounted(() => {
                 <CloseCircleOutline v-else />
               </NIcon>
             </template>
-            {{ ffmpegOk ? "已安装" : "未安装" }}
-          </NTag>
-        </div>
-        <div class="setting-item">
-          <span class="setting-label">yt-dlp</span>
-          <NTag :type="ytdlpOk ? 'success' : 'error'" size="small">
-            <template #icon>
-              <NIcon>
-                <CheckmarkCircleOutline v-if="ytdlpOk" />
-                <CloseCircleOutline v-else />
-              </NIcon>
-            </template>
-            {{ ytdlpOk ? "已安装" : "未安装" }}
+            {{ ffmpegOk ? "正常" : "异常" }}
           </NTag>
         </div>
         <div class="setting-item">
@@ -146,7 +131,7 @@ onMounted(() => {
           </NButton>
         </div>
         <p class="tool-hint">
-          请确保 ffmpeg 和 yt-dlp 已安装并添加到系统 PATH。下载功能依赖这两个工具。
+          所有工具已内置，无需额外安装。
         </p>
       </div>
     </div>

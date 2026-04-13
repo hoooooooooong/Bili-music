@@ -75,14 +75,8 @@ function onClickLine(line: LyricLine) {
 .scrolling-lyrics {
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px 0;
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 15%,
-    black 85%,
-    transparent 100%
-  );
 }
 
 .no-lyrics {

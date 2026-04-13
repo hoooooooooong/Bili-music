@@ -9,6 +9,7 @@ pub struct AudioConverter;
 
 impl AudioConverter {
     pub async fn to_mp3(
+        ffmpeg_path: &Path,
         input_path: &Path,
         output_path: &Path,
         cover_path: Option<&Path>,
@@ -19,7 +20,7 @@ impl AudioConverter {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        let mut cmd = Command::new("ffmpeg");
+        let mut cmd = Command::new(ffmpeg_path);
         cmd.arg("-i").arg(input_path);
 
         if let Some(cover) = cover_path {
@@ -52,7 +53,7 @@ impl AudioConverter {
 
         let output = cmd.output().await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                AppError::Convert("未找到 ffmpeg，请安装并添加到 PATH".into())
+                AppError::Convert("未找到 ffmpeg".into())
             } else {
                 AppError::Convert(format!("启动 ffmpeg 失败: {}", e))
             }
@@ -74,20 +75,9 @@ impl AudioConverter {
         Ok(abs_path)
     }
 
-    pub async fn check_ffmpeg() -> bool {
-        Command::new("ffmpeg")
+    pub async fn check_ffmpeg(ffmpeg_path: &Path) -> bool {
+        Command::new(ffmpeg_path)
             .args(["-version"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await
-            .map(|s| s.success())
-            .unwrap_or(false)
-    }
-
-    pub async fn check_yt_dlp() -> bool {
-        Command::new("yt-dlp")
-            .args(["--version"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()

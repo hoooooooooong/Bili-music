@@ -15,7 +15,7 @@ import { useDownloadStore } from "@/stores/download";
 import type { Song } from "@/types";
 import { formatPlayCount } from "@/utils/formatters";
 
-const props = defineProps<{ song: Song }>();
+const props = defineProps<{ song: Song; songList?: Song[] }>();
 
 const player = usePlayerStore();
 const favorites = useFavoritesStore();
@@ -42,7 +42,7 @@ function togglePlay() {
   if (isCurrentSong.value) {
     player.togglePlay();
   } else {
-    player.playSong(props.song);
+    player.playSong(props.song, props.songList);
   }
 }
 

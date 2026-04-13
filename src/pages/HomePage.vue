@@ -26,7 +26,6 @@ function handleSearch(keyword: string) {
 
 function playSong(song: Song) {
   player.playSong(song);
-  historyStore.addSong(song);
 }
 </script>
 
@@ -164,6 +163,8 @@ function playSong(song: Song) {
   padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
+  text-align: left;
+  width: 100%;
 }
 
 .history-item:hover {

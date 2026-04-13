@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use tauri::State;
-use crate::core::downloader::BilibiliDownloader;
+use crate::core::downloader::{BilibiliDownloader, download_from_url};
 use crate::core::converter::AudioConverter;
+use crate::core::ffmpeg_path::FfmpegPath;
 use crate::core::searcher::BilibiliSearcher;
 use crate::core::task_manager::TaskManager;
 use crate::config::*;
@@ -18,6 +19,7 @@ pub async fn start_download(
     bvid: String,
     state: State<'_, TaskManager>,
     searcher: State<'_, BilibiliSearcher>,
+    ffmpeg_path: State<'_, FfmpegPath>,
     options: Option<DownloadOptions>,
 ) -> AppResult<String> {
     if !regex::Regex::new(r"^BV[a-zA-Z0-9]+$")
@@ -35,6 +37,7 @@ pub async fn start_download(
     // We need to get handles that outlive this function
     let state_inner = state.inner().clone();
     let searcher_inner = searcher.inner().clone();
+    let ffmpeg = ffmpeg_path.0.clone();
 
     tokio::spawn(async move {
         let temp_dir = get_temp_dir();
@@ -151,6 +154,7 @@ pub async fn start_download(
         let output_path = output_dir.join(format!("{}.mp3", safe_name));
 
         match AudioConverter::to_mp3(
+            &ffmpeg,
             &downloaded_file,
             &output_path,
             cover_path.as_deref(),
@@ -258,75 +262,31 @@ pub async fn get_audio_url(
 
 #[tauri::command]
 pub async fn stream_audio(bvid: String) -> AppResult<String> {
-    // Check cache first
     let cache_dir = get_temp_dir();
     tokio::fs::create_dir_all(&cache_dir).await?;
-    let audio_file = cache_dir.join(format!("{}_audio.%(ext)s", bvid));
 
-    // Use yt-dlp to download audio via python
-    let python = find_python().ok_or_else(|| AppError::Other(
-        "未找到 Python，请安装 Python".into(),
-    ))?;
-
-    let output = tokio::process::Command::new(&python)
-        .args([
-            "-m", "yt_dlp",
-            "-f", "bestaudio/best",
-            "--no-playlist",
-            "--no-warnings",
-            "-o", audio_file.to_str().unwrap(),
-            "--extractor-args", "bilibili:prefer_multi_flv_audio=False",
-            &format!("{}{}", crate::config::BILIBILI_VIDEO_URL, bvid),
-        ])
-        .output()
-        .await
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                AppError::Other(format!("未找到 Python: {}", python.display()))
-            } else {
-                AppError::Download(format!("启动下载失败: {}", e))
-            }
-        })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::Download(format!("下载音频失败: {}", stderr)));
-    }
-
-    // Find the actual downloaded file (template: {bvid}_audio.{ext})
-    let base = cache_dir.join(format!("{}_audio", bvid));
+    // Check cache: if audio file already exists, return it directly
     for ext in &["m4a", "webm", "mp4", "flv", "opus", "mp3"] {
-        let candidate = base.with_extension(ext);
+        let candidate = cache_dir.join(format!("{}_audio.{}", bvid, ext));
         if candidate.exists() {
-            return Ok(candidate.to_str().unwrap().to_string());
-        }
-    }
-
-    Err(AppError::Download("音频文件未找到".into()))
-}
-
-/// Find Python executable.
-fn find_python() -> Option<PathBuf> {
-    if let Some(home) = dirs::home_dir() {
-        let candidates = [
-            home.join("AppData/Local/Python/pythoncore-3.14-64/python.exe"),
-            home.join("AppData/Local/Python/pythoncore-3.13-64/python.exe"),
-            home.join("AppData/Local/Python/pythoncore-3.12-64/python.exe"),
-            home.join("AppData/Local/Programs/Python/Python314/python.exe"),
-            home.join("AppData/Local/Programs/Python/Python313/python.exe"),
-            home.join("AppData/Local/Programs/Python/Python312/python.exe"),
-        ];
-        for candidate in &candidates {
-            if candidate.exists() {
-                return Some(candidate.clone());
+            let metadata = tokio::fs::metadata(&candidate).await?;
+            if metadata.len() > 0 {
+                return Ok(candidate.to_str().unwrap().to_string());
             }
         }
     }
-    // Try PATH
-    if let Ok(output) = std::process::Command::new("python").arg("--version").output() {
-        if output.status.success() {
-            return Some(PathBuf::from("python"));
-        }
-    }
-    None
+
+    // Get audio URL from API
+    let audio_info = BilibiliDownloader::get_audio_url(&bvid).await?;
+    let output_path = cache_dir.join(format!("{}_audio.{}", bvid, audio_info.ext));
+
+    download_from_url(
+        &audio_info.url,
+        &audio_info.backup_urls,
+        &output_path,
+        &|_, _| {},
+    )
+    .await?;
+
+    Ok(output_path.to_str().unwrap().to_string())
 }

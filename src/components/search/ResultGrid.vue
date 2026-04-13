@@ -45,6 +45,7 @@ const searchStore = useSearchStore();
           v-for="song in searchStore.results"
           :key="song.bvid"
           :song="song"
+          :song-list="searchStore.results"
         />
       </div>
       <div class="load-more">

@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 import type { Song, PlayMode, LyricsData } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
+import { useHistoryStore } from "./history";
 
 const audio = new Audio();
 
@@ -33,6 +34,7 @@ export const usePlayerStore = defineStore("player", () => {
 
   async function playSong(song: Song, list?: Song[]) {
     currentSong.value = song;
+    useHistoryStore().addSong(song);
 
     if (list) {
       playlist.value = list;

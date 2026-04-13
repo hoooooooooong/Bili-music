@@ -117,6 +117,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
               <ShuffleOutline v-if="player.playMode === 'random'" />
               <RepeatOutline v-else />
             </NIcon>
+            <span v-if="player.playMode === 'loop'" class="loop-badge">1</span>
           </button>
           <button class="fp-ctrl" @click="player.prev()">
             <NIcon size="26"><PlaySkipBackOutline /></NIcon>
@@ -288,6 +289,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 }
 
 .fp-ctrl {
+  position: relative;
   width: 40px;
   height: 40px;
   display: flex;
@@ -299,6 +301,16 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 
 .fp-ctrl:hover {
   background: rgba(255, 255, 255, 0.1);
+}
+
+.fp-ctrl .loop-badge {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fb7299;
 }
 
 .fp-play-btn {

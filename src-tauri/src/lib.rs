@@ -6,6 +6,7 @@ mod commands;
 use core::searcher::BilibiliSearcher;
 use core::lyrics_client::LyricsClient;
 use core::task_manager::TaskManager;
+use core::ffmpeg_path::FfmpegPath;
 use tauri::Manager;
 
 pub fn run() {
@@ -100,10 +101,12 @@ pub fn run() {
             let searcher = BilibiliSearcher::new();
             let lyrics_client = LyricsClient::new();
             let task_manager = TaskManager::new(app.handle().clone());
+            let ffmpeg_path = FfmpegPath(FfmpegPath::resolve(app.handle()));
 
             app.manage(searcher);
             app.manage(lyrics_client);
             app.manage(task_manager);
+            app.manage(ffmpeg_path);
 
             // Initialize Bilibili cookies in background
             tauri::async_runtime::spawn(async {

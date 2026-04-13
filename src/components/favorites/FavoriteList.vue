@@ -18,6 +18,7 @@ const sortedFavorites = computed(() => [...favorites.favorites].reverse());
         v-for="song in sortedFavorites"
         :key="song.bvid"
         :song="song"
+        :song-list="sortedFavorites"
       />
     </div>
   </div>
