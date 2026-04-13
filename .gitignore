@@ -5,3 +5,5 @@ target/
 !src-tauri/icons/*.png
 !src-tauri/icons/*.ico
 app-icon.png
+.claude/
+.playwright-mcp/
