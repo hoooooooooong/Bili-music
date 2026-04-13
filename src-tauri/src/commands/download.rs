@@ -9,9 +9,11 @@ use crate::config::*;
 use crate::error::{AppError, AppResult};
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DownloadOptions {
     pub output_dir: Option<String>,
+    pub format: Option<String>,
+    pub quality: Option<String>,
 }
 
 #[tauri::command]
@@ -41,7 +43,8 @@ pub async fn start_download(
 
     tokio::spawn(async move {
         let temp_dir = get_temp_dir();
-        let output_dir = options
+        let options_for_dir = options.clone();
+        let output_dir = options_for_dir
             .and_then(|o| o.output_dir)
             .map(PathBuf::from)
             .unwrap_or_else(get_default_output_dir);
@@ -151,12 +154,22 @@ pub async fn start_download(
             .map(|i| format!("{} - {}", i.title, i.author))
             .unwrap_or_else(|| bvid_clone.clone());
         let safe_name = sanitize_filename(&raw_name);
-        let output_path = output_dir.join(format!("{}.mp3", safe_name));
+        let format = options
+            .as_ref()
+            .and_then(|o| o.format.as_deref())
+            .unwrap_or("mp3");
+        let quality = options
+            .as_ref()
+            .and_then(|o| o.quality.as_deref())
+            .unwrap_or("high");
+        let output_path = output_dir.join(format!("{}.{}", safe_name, format));
 
-        match AudioConverter::to_mp3(
+        match AudioConverter::convert(
             &ffmpeg,
             &downloaded_file,
             &output_path,
+            format,
+            quality,
             cover_path.as_deref(),
             video_info.as_ref().map(|i| i.title.as_str()),
             video_info.as_ref().map(|i| i.author.as_str()),
@@ -168,7 +181,7 @@ pub async fn start_download(
                     .update(&task_id, |t| {
                         t.status = "done".into();
                         t.file_path = Some(result_path.to_str().unwrap().to_string());
-                        t.file_name = Some(format!("{}.mp3", safe_name));
+                        t.file_name = Some(format!("{}.{}", safe_name, format));
                     })
                     .await;
             }

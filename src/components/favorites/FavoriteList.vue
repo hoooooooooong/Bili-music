@@ -1,10 +1,26 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { ref, computed } from "vue";
 import SongCard from "../search/SongCard.vue";
 import { useFavoritesStore } from "@/stores/favorites";
+import { useDragSort } from "@/composables/useDragSort";
 
 const favorites = useFavoritesStore();
 const sortedFavorites = computed(() => [...favorites.favorites].reverse());
+
+const listRef = ref<HTMLElement | null>(null);
+
+function toStoreIndex(visualIndex: number) {
+  return favorites.favorites.length - 1 - visualIndex;
+}
+
+const { dragIndex, getItemStyle, onMouseDown } = useDragSort({
+  listRef,
+  itemSelector: ".fav-item",
+  ghostClass: "fav-drag-ghost",
+  skipSelector: ".card-actions",
+  gap: 8,
+  onDrop: (from, to) => favorites.moveFavorite(toStoreIndex(from), toStoreIndex(to)),
+});
 </script>
 
 <template>
@@ -13,13 +29,17 @@ const sortedFavorites = computed(() => [...favorites.favorites].reverse());
       <p>还没有收藏</p>
       <p class="empty-hint">点击歌曲卡片的爱心图标添加收藏</p>
     </div>
-    <div v-else class="song-list">
-      <SongCard
-        v-for="song in sortedFavorites"
+    <div v-else class="song-list" ref="listRef">
+      <div
+        v-for="(song, index) in sortedFavorites"
         :key="song.bvid"
-        :song="song"
-        :song-list="sortedFavorites"
-      />
+        class="fav-item"
+        :class="{ dragging: dragIndex === index }"
+        :style="getItemStyle(index)"
+        @mousedown="onMouseDown($event, index)"
+      >
+        <SongCard :song="song" :song-list="sortedFavorites" />
+      </div>
     </div>
   </div>
 </template>
@@ -48,5 +68,25 @@ const sortedFavorites = computed(() => [...favorites.favorites].reverse());
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.fav-item {
+  cursor: grab;
+  user-select: none;
+}
+
+.fav-item.dragging {
+  visibility: hidden;
+}
+</style>
+
+<style>
+.fav-drag-ghost {
+  opacity: 0.85;
+  background: var(--card-bg);
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: grabbing;
+  padding: 10px 12px;
 }
 </style>

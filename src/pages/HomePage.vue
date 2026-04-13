@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import AppHeader from "@/components/AppHeader.vue";
 import WelcomeSection from "@/components/search/WelcomeSection.vue";
 import ResultGrid from "@/components/search/ResultGrid.vue";
-import FavoriteList from "@/components/favorites/FavoriteList.vue";
+import PlaylistsTab from "@/components/playlists/PlaylistsTab.vue";
 import { useSearchStore } from "@/stores/search";
 import { usePlayerStore } from "@/stores/player";
 import { useHistoryStore } from "@/stores/history";
@@ -18,6 +18,12 @@ const historyStore = useHistoryStore();
 const activeTab = ref<"search" | "favorites" | "history">("search");
 
 useKeyboardShortcuts();
+
+watch(() => searchStore.keyword, (kw) => {
+  if (kw && activeTab.value !== "search") {
+    activeTab.value = "search";
+  }
+});
 
 function handleSearch(keyword: string) {
   activeTab.value = "search";
@@ -60,7 +66,7 @@ function playSong(song: Song) {
       </button>
     </div>
 
-    <div v-show="activeTab === 'search'">
+    <div v-show="activeTab === 'search'" class="tab-content">
       <WelcomeSection
         v-if="!searchStore.keyword && !searchStore.loading"
         @search="handleSearch"
@@ -69,7 +75,7 @@ function playSong(song: Song) {
     </div>
 
     <div v-show="activeTab === 'favorites'">
-      <FavoriteList />
+      <PlaylistsTab />
     </div>
 
     <div v-show="activeTab === 'history'" class="history-section">
@@ -86,12 +92,15 @@ function playSong(song: Song) {
           class="history-item"
           @click="playSong(entry.song)"
         >
-          <img
-            :src="entry.song.coverUrl || `bili-cover://${entry.song.bvid}`"
-            :alt="entry.song.title"
-            class="history-cover"
-            loading="lazy"
-          />
+          <div class="history-cover-wrap">
+            <img
+              :src="entry.song.coverUrl || `bili-cover://${entry.song.bvid}`"
+              :alt="entry.song.title"
+              class="history-cover"
+              loading="lazy"
+              @load="($event.target as HTMLImageElement).classList.add('loaded')"
+            />
+          </div>
           <div class="history-info">
             <p class="history-title">{{ entry.song.title }}</p>
             <p class="history-author">{{ entry.song.author }}</p>
@@ -105,6 +114,13 @@ function playSong(song: Song) {
 
 <style scoped>
 .home-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-content {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -171,12 +187,35 @@ function playSong(song: Song) {
   background: var(--card-hover);
 }
 
-.history-cover {
+.history-cover-wrap {
   width: 40px;
   height: 40px;
   border-radius: 6px;
-  object-fit: cover;
   flex-shrink: 0;
+  overflow: hidden;
+  background: var(--card-hover);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.history-cover-wrap.loaded {
+  animation: none;
+}
+
+.history-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.history-cover.loaded {
+  opacity: 1;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .history-info {

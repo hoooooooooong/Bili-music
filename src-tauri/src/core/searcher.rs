@@ -143,6 +143,92 @@ impl BilibiliSearcher {
         Ok(Self::parse_view_item(item, &re_tag))
     }
 
+    /// Get Bilibili music section (rid=3) hot ranking
+    pub async fn get_hot_ranking(&self) -> AppResult<Vec<SearchResult>> {
+        let resp = self
+            .client
+            .get(BILIBILI_RANKING_URL)
+            .query(&[("rid", "3")])
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+
+        let data: serde_json::Value = resp.json().await?;
+
+        if data.get("code").and_then(|c| c.as_i64()) != Some(0) {
+            let msg = data
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("获取排行榜失败");
+            return Err(AppError::Search(msg.into()));
+        }
+
+        let re_tag = Regex::new(r"<[^>]+>").unwrap();
+        let list = data
+            .get("data")
+            .and_then(|d| d.get("list"))
+            .and_then(|l| l.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let results: Vec<SearchResult> = list
+            .iter()
+            .take(20)
+            .map(|item| {
+                let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("");
+                let title = decode_html_entities(title);
+                let title = re_tag.replace_all(&title, "").to_string();
+
+                let mut cover_url = item
+                    .get("pic")
+                    .and_then(|p| p.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if cover_url.starts_with("//") {
+                    cover_url = format!("https:{}", cover_url);
+                }
+
+                let play_count = item
+                    .get("stat")
+                    .and_then(|s| s.get("view"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+
+                let author = item
+                    .get("owner")
+                    .and_then(|o| o.get("name"))
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let duration_secs = item
+                    .get("duration")
+                    .and_then(|d| d.as_u64())
+                    .unwrap_or(0);
+                let duration = format!("{:02}:{:02}", duration_secs / 60, duration_secs % 60);
+
+                let desc = item
+                    .get("desc")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                SearchResult {
+                    bvid: item.get("bvid").and_then(|b| b.as_str()).unwrap_or("").into(),
+                    title: title.trim().into(),
+                    author,
+                    duration,
+                    play_count,
+                    play_count_text: format_play_count(play_count),
+                    cover_url,
+                    description: desc,
+                }
+            })
+            .collect();
+
+        Ok(results)
+    }
+
     fn parse_view_item(item: &serde_json::Value, _re_tag: &Regex) -> SearchResult {
         let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string();
         

@@ -37,6 +37,12 @@ export const useFavoritesStore = defineStore(
       }
     }
 
+    function moveFavorite(fromIndex: number, toIndex: number) {
+      if (fromIndex === toIndex) return;
+      const [item] = favorites.value.splice(fromIndex, 1);
+      favorites.value.splice(toIndex, 0, item);
+    }
+
     function exportData(): string {
       return JSON.stringify(favorites.value, null, 2);
     }
@@ -67,6 +73,7 @@ export const useFavoritesStore = defineStore(
       toggle,
       add,
       remove,
+      moveFavorite,
       exportData,
       importData,
       clearAll,

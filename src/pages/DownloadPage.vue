@@ -18,6 +18,14 @@ const taskList = computed(() =>
   Array.from(downloadStore.tasks.values()).reverse()
 );
 
+const activeTaskList = computed(() =>
+  taskList.value.filter(
+    (t) => t.status === "downloading" || t.status === "converting"
+  )
+);
+
+const queuedList = computed(() => downloadStore.queue);
+
 function goBack() {
   router.push("/");
 }
@@ -68,6 +76,15 @@ onMounted(() => {
     </div>
 
     <div class="download-list">
+      <!-- Queue status bar -->
+      <div v-if="downloadStore.hasActiveTasks" class="queue-status">
+        <span v-if="activeTaskList.length > 0" class="queue-active">
+          正在下载 {{ activeTaskList.length }} 首
+        </span>
+        <span v-if="queuedList.length > 0" class="queue-queued">
+          ，队列中 {{ queuedList.length }} 首
+        </span>
+      </div>
       <div v-if="taskList.length === 0" class="empty-state">
         <p>暂无下载任务</p>
       </div>
@@ -105,7 +122,15 @@ onMounted(() => {
         </div>
 
         <div v-if="task.status === 'converting'" class="item-detail">
-          正在转换为 MP3...
+          正在转换{{ task.fileName ? `为 ${task.fileName.split('.').pop()?.toUpperCase()}` : '' }}...
+        </div>
+      </div>
+
+      <!-- Queued items -->
+      <div v-for="item in queuedList" :key="'q-' + item.bvid" class="download-item queued-item">
+        <div class="item-header">
+          <span class="item-bvid">{{ item.title || item.bvid }}</span>
+          <span class="item-status status-pending">等待中</span>
         </div>
       </div>
     </div>
@@ -150,6 +175,28 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.queue-status {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  background: var(--accent-light);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.queue-active {
+  color: var(--accent-color);
+  font-weight: 500;
+}
+
+.queue-queued {
+  color: var(--text-secondary);
+}
+
+.queued-item {
+  opacity: 0.7;
 }
 
 .empty-state {

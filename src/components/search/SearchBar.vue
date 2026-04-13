@@ -6,6 +6,7 @@ import {
   CloseOutline,
   TimeOutline,
   ArrowUpOutline,
+  TrashOutline,
 } from "@vicons/ionicons5";
 import { useSearchStore } from "@/stores/search";
 import { useHistoryStore } from "@/stores/history";
@@ -41,6 +42,11 @@ function selectHistory(kw: string) {
 
 function clearAllHistory() {
   historyStore.clearSearchHistory();
+}
+
+function removeHistoryItem(kw: string, e: MouseEvent) {
+  e.stopPropagation();
+  historyStore.removeSearch(kw);
 }
 
 function onFocus() {
@@ -99,7 +105,11 @@ function handleKeydown(e: KeyboardEvent) {
             class="dropdown-item"
             @mousedown.prevent="selectHistory(kw)"
           >
-            {{ kw }}
+            <span class="dropdown-item-text">{{ kw }}</span>
+            <span
+              class="dropdown-item-del"
+              @mousedown.prevent="removeHistoryItem(kw, $event)"
+            ><NIcon size="14"><TrashOutline /></NIcon></span>
           </button>
         </div>
       </div>
@@ -202,12 +212,38 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 .dropdown-item {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   text-align: left;
   padding: 8px 14px;
   font-size: 13px;
   color: var(--app-text);
+}
+
+.dropdown-item-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-item-del {
+  flex-shrink: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  margin-left: 8px;
+}
+
+.dropdown-item:hover .dropdown-item-del {
+  display: flex;
+}
+
+.dropdown-item-del:hover {
+  color: var(--danger-color, #e5484d);
 }
 
 .dropdown-item:hover {

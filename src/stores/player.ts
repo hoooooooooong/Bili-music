@@ -3,9 +3,41 @@ import { ref, computed } from "vue";
 import type { Song, PlayMode, LyricsData } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
-import { useHistoryStore } from "./history";
+import { emit } from "@/utils/emitter";
 
 const audio = new Audio();
+
+// AudioContext + Analyser: 全局只初始化一次，供 AudioVisualizer 使用
+let _audioCtx: AudioContext | null = null;
+let _analyser: AnalyserNode | null = null;
+function cleanupAudioContext() {
+  if (_analyser) {
+    _analyser.disconnect();
+    _analyser = null;
+  }
+  if (_audioCtx) {
+    _audioCtx.close().catch(() => {});
+    _audioCtx = null;
+  }
+}
+
+function getAnalyser(): AnalyserNode | null {
+  if (_analyser) {
+    if (_audioCtx?.state === "suspended") _audioCtx.resume();
+    return _analyser;
+  }
+  try {
+    _audioCtx = new AudioContext();
+    const source = _audioCtx.createMediaElementSource(audio);
+    _analyser = _audioCtx.createAnalyser();
+    _analyser.fftSize = 128;
+    source.connect(_analyser);
+    _analyser.connect(_audioCtx.destination);
+  } catch (e) {
+    console.error("[player] getAnalyser failed:", e);
+  }
+  return _analyser;
+}
 
 export const usePlayerStore = defineStore("player", () => {
   const currentSong = ref<Song | null>(null);
@@ -22,6 +54,9 @@ export const usePlayerStore = defineStore("player", () => {
   const coverUrl = ref("");
   const buffering = ref(false);
   const playError = ref("");
+  const sleepTimerRemaining = ref(0);
+  const sleepTimerTotal = ref(0);
+  let _sleepTimerInterval: ReturnType<typeof setInterval> | null = null;
 
   const progress = computed(() =>
     duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0
@@ -34,7 +69,7 @@ export const usePlayerStore = defineStore("player", () => {
 
   async function playSong(song: Song, list?: Song[]) {
     currentSong.value = song;
-    useHistoryStore().addSong(song);
+    emit("song:played", song);
 
     if (list) {
       playlist.value = list;
@@ -63,6 +98,8 @@ export const usePlayerStore = defineStore("player", () => {
 
       await audio.play();
       isPlaying.value = true;
+      // 确保 AudioContext 在用户交互后恢复
+      getAnalyser();
     } catch (e: any) {
       playError.value = typeof e === "string" ? e : e.message || String(e);
       console.error("Failed to play:", e);
@@ -85,15 +122,51 @@ export const usePlayerStore = defineStore("player", () => {
     }
   }
 
+  function pause() {
+    audio.pause();
+  }
+
+  function setSleepTimer(minutes: number) {
+    if (_sleepTimerInterval) clearInterval(_sleepTimerInterval);
+    sleepTimerTotal.value = minutes * 60;
+    sleepTimerRemaining.value = minutes * 60;
+    _sleepTimerInterval = setInterval(() => {
+      sleepTimerRemaining.value--;
+      if (sleepTimerRemaining.value <= 0) {
+        audio.pause();
+        clearInterval(_sleepTimerInterval!);
+        _sleepTimerInterval = null;
+        sleepTimerRemaining.value = 0;
+        sleepTimerTotal.value = 0;
+      }
+    }, 1000);
+  }
+
+  function clearSleepTimer() {
+    if (_sleepTimerInterval) clearInterval(_sleepTimerInterval);
+    _sleepTimerInterval = null;
+    sleepTimerRemaining.value = 0;
+    sleepTimerTotal.value = 0;
+  }
+
   function seek(time: number) {
     audio.currentTime = time;
     currentTime.value = time;
   }
 
+  let _seekTimer: ReturnType<typeof setTimeout> | null = null;
+
   function seekByPercent(percent: number) {
-    if (duration.value > 0) {
-      seek((percent / 100) * duration.value);
-    }
+    if (duration.value <= 0) return;
+    const time = (percent / 100) * duration.value;
+    // Update visual position immediately
+    currentTime.value = time;
+    // Debounce the actual audio seek
+    if (_seekTimer) clearTimeout(_seekTimer);
+    _seekTimer = setTimeout(() => {
+      audio.currentTime = time;
+      _seekTimer = null;
+    }, 80);
   }
 
   async function next() {
@@ -138,6 +211,21 @@ export const usePlayerStore = defineStore("player", () => {
   function addToPlaylist(song: Song) {
     if (!playlist.value.some((s) => s.bvid === song.bvid)) {
       playlist.value.push(song);
+    }
+  }
+
+  function movePlaylistItem(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    const [item] = playlist.value.splice(fromIndex, 1);
+    playlist.value.splice(toIndex, 0, item);
+
+    // Adjust currentIndex to follow the moved song
+    if (fromIndex === currentIndex.value) {
+      currentIndex.value = toIndex;
+    } else if (fromIndex < currentIndex.value && toIndex >= currentIndex.value) {
+      currentIndex.value--;
+    } else if (fromIndex > currentIndex.value && toIndex <= currentIndex.value) {
+      currentIndex.value++;
     }
   }
 
@@ -214,7 +302,24 @@ export const usePlayerStore = defineStore("player", () => {
     isPlaying.value = true;
   });
 
+  function cleanup() {
+    if (_seekTimer) {
+      clearTimeout(_seekTimer);
+      _seekTimer = null;
+    }
+    audio.pause();
+    audio.removeAttribute("src");
+    if (audioUrl.value) {
+      URL.revokeObjectURL(audioUrl.value);
+      audioUrl.value = "";
+    }
+    cleanupAudioContext();
+  }
+
   return {
+    audio,
+    getAnalyser,
+    cleanup,
     currentSong,
     playlist,
     currentIndex,
@@ -230,15 +335,21 @@ export const usePlayerStore = defineStore("player", () => {
     coverUrl,
     buffering,
     playError,
+    sleepTimerRemaining,
+    sleepTimerTotal,
     setVolume,
     playSong,
     togglePlay,
+    pause,
+    setSleepTimer,
+    clearSleepTimer,
     seek,
     seekByPercent,
     next,
     prev,
     togglePlayMode,
     addToPlaylist,
+    movePlaylistItem,
     removeFromPlaylist,
     clearPlaylist,
     fetchLyrics,

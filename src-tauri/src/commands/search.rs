@@ -96,3 +96,10 @@ pub async fn get_related(
 
     Ok(results)
 }
+
+#[tauri::command]
+pub async fn get_hot_ranking(
+    searcher: State<'_, BilibiliSearcher>,
+) -> AppResult<Vec<crate::core::searcher::SearchResult>> {
+    searcher.get_hot_ranking().await
+}

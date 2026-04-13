@@ -46,12 +46,27 @@ export interface AppSettings {
   theme: "light" | "dark" | "system";
   cacheSize: number;
   volume: number;
+  downloadFormat: AudioFormat;
+  downloadQuality: AudioQuality;
+  minimizeToTray?: boolean;
+  autostartEnabled?: boolean;
 }
+
+export type AudioFormat = "mp3" | "flac" | "wav" | "aac";
+export type AudioQuality = "high" | "medium" | "low";
 
 export interface AudioUrlInfo {
   url: string;
   ext: string;
   filesize: number;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  createdAt: number;
+  songs: Song[];
+  coverUrl?: string;
 }
 
 export type PlayMode = "sequential" | "loop" | "random";

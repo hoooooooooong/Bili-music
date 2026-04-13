@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NIcon } from "naive-ui";
-import { useSettingsStore } from "@/stores/settings";
+import { useSettingsStore, setThemeClickOrigin } from "@/stores/settings";
 import { SettingsOutline, SunnyOutline, MoonOutline } from "@vicons/ionicons5";
 import { useRouter } from "vue-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -8,7 +8,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 const settingsStore = useSettingsStore();
 const router = useRouter();
 
-function toggleTheme() {
+function toggleTheme(e: MouseEvent) {
+  setThemeClickOrigin(e.clientX, e.clientY);
   const next = settingsStore.theme === "dark" ? "light" : "dark";
   settingsStore.setTheme(next);
 }

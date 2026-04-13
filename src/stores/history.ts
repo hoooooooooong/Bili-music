@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import type { Song } from "@/types";
+import { on } from "@/utils/emitter";
 
 interface HistoryEntry {
   song: Song;
@@ -12,6 +13,8 @@ export const useHistoryStore = defineStore(
   "history",
   () => {
     const history = ref<HistoryEntry[]>([]);
+
+    on("song:played", (song: Song) => addSong(song));
     const searchHistory = ref<string[]>([]);
 
     function addSong(song: Song) {
@@ -54,6 +57,13 @@ export const useHistoryStore = defineStore(
       searchHistory.value = [];
     }
 
+    function removeSearch(keyword: string) {
+      const idx = searchHistory.value.indexOf(keyword);
+      if (idx >= 0) {
+        searchHistory.value.splice(idx, 1);
+      }
+    }
+
     function removeSong(bvid: string) {
       const idx = history.value.findIndex((h) => h.song.bvid === bvid);
       if (idx >= 0) {
@@ -68,6 +78,7 @@ export const useHistoryStore = defineStore(
       addSearch,
       clearHistory,
       clearSearchHistory,
+      removeSearch,
       removeSong,
     };
   },

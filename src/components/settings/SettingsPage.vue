@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import {
   NIcon,
   NButton,
   NInput,
   NTag,
+  NSwitch,
   useMessage,
 } from "naive-ui";
 import {
@@ -13,15 +14,56 @@ import {
   CheckmarkCircleOutline,
   CloseCircleOutline,
   RefreshOutline,
+  TrashOutline,
 } from "@vicons/ionicons5";
-import { useSettingsStore } from "@/stores/settings";
+import { useSettingsStore, setThemeClickOrigin } from "@/stores/settings";
+import { useHistoryStore } from "@/stores/history";
+import { audioCache, MAX_CACHE_SIZE } from "@/composables/useAudioCache";
+import type { AudioFormat, AudioQuality } from "@/types";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
 const settingsStore = useSettingsStore();
+const historyStore = useHistoryStore();
 const message = useMessage();
 
 const ffmpegOk = ref(false);
+
+// 数据统计
+const totalPlays = computed(
+  () => historyStore.history.reduce((sum, e) => sum + e.playCount, 0)
+);
+const uniqueSongs = computed(() => historyStore.history.length);
+const topSongs = computed(() =>
+  [...historyStore.history]
+    .sort((a, b) => b.playCount - a.playCount)
+    .slice(0, 10)
+);
+
+// 存储管理
+const cacheSize = ref(0);
+const cacheEntryCount = ref(0);
+const cachePercent = computed(() =>
+  MAX_CACHE_SIZE > 0 ? (cacheSize.value / MAX_CACHE_SIZE) * 100 : 0
+);
+
+function formatMB(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(1);
+}
+
+async function refreshCacheInfo() {
+  await audioCache.init();
+  await audioCache.refreshSize();
+  cacheSize.value = audioCache.currentSize;
+  cacheEntryCount.value = await audioCache.getEntryCount();
+}
+
+async function clearCache() {
+  const freed = cacheSize.value;
+  await audioCache.clear();
+  await refreshCacheInfo();
+  message.success(`缓存已清理，释放 ${formatMB(freed)} MB`);
+}
 
 async function checkTools() {
   try {
@@ -36,12 +78,33 @@ function goBack() {
   router.push("/");
 }
 
-function setTheme(t: "light" | "dark" | "system") {
+function setTheme(t: "light" | "dark" | "system", e: MouseEvent) {
+  setThemeClickOrigin(e.clientX, e.clientY);
   settingsStore.setTheme(t);
+}
+
+function setDownloadFormat(fmt: AudioFormat) {
+  settingsStore.downloadFormat = fmt;
+  settingsStore.saveSettings();
+}
+
+function setDownloadQuality(q: AudioQuality) {
+  settingsStore.downloadQuality = q;
+  settingsStore.saveSettings();
+}
+
+async function setMinimizeToTray(val: boolean) {
+  settingsStore.minimizeToTray = val;
+  await settingsStore.saveSettings();
+}
+
+async function setAutostartEnabled(val: boolean) {
+  await settingsStore.setAutostartEnabled(val);
 }
 
 onMounted(() => {
   checkTools();
+  refreshCacheInfo();
 });
 </script>
 
@@ -64,21 +127,21 @@ onMounted(() => {
             <button
               class="theme-btn"
               :class="{ active: settingsStore.theme === 'light' }"
-              @click="setTheme('light')"
+              @click="setTheme('light', $event)"
             >
               亮色
             </button>
             <button
               class="theme-btn"
               :class="{ active: settingsStore.theme === 'dark' }"
-              @click="setTheme('dark')"
+              @click="setTheme('dark', $event)"
             >
               暗色
             </button>
             <button
               class="theme-btn"
               :class="{ active: settingsStore.theme === 'system' }"
-              @click="setTheme('system')"
+              @click="setTheme('system', $event)"
             >
               跟随系统
             </button>
@@ -104,6 +167,99 @@ onMounted(() => {
               选择
             </NButton>
           </div>
+        </div>
+        <div class="setting-item">
+          <span class="setting-label">音频格式</span>
+          <div class="btn-group">
+            <button
+              v-for="fmt in (['mp3', 'flac', 'wav', 'aac'] as const)"
+              :key="fmt"
+              class="option-btn"
+              :class="{ active: settingsStore.downloadFormat === fmt }"
+              @click="setDownloadFormat(fmt)"
+            >{{ fmt.toUpperCase() }}</button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <span class="setting-label">音质</span>
+          <div class="btn-group">
+            <button
+              v-for="q in (['high', 'medium', 'low'] as const)"
+              :key="q"
+              class="option-btn"
+              :class="{ active: settingsStore.downloadQuality === q }"
+              @click="setDownloadQuality(q)"
+            >{{ { high: '高', medium: '中', low: '低' }[q] }}</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="section-title">系统</h3>
+        <div class="setting-item">
+          <span class="setting-label">关闭时最小化到托盘</span>
+          <NSwitch
+            :value="settingsStore.minimizeToTray"
+            @update:value="setMinimizeToTray"
+          />
+        </div>
+        <div class="setting-item">
+          <span class="setting-label">开机自启</span>
+          <NSwitch
+            :value="settingsStore.autostartEnabled"
+            @update:value="setAutostartEnabled"
+          />
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="section-title">数据统计</h3>
+        <div v-if="historyStore.history.length === 0" class="empty-hint">
+          暂无播放记录
+        </div>
+        <template v-else>
+          <div class="stat-row">
+            <span class="stat-label">总播放次数</span>
+            <span class="stat-value">{{ totalPlays.toLocaleString() }} 次</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">收听歌曲数</span>
+            <span class="stat-value">{{ uniqueSongs }} 首</span>
+          </div>
+          <div class="stat-divider"></div>
+          <p class="stat-subtitle">最常听的歌曲</p>
+          <div
+            v-for="(entry, i) in topSongs"
+            :key="entry.song.bvid"
+            class="top-song-item"
+          >
+            <span class="top-song-rank">{{ i + 1 }}</span>
+            <span class="top-song-name">{{ entry.song.title }} - {{ entry.song.author }}</span>
+            <span class="top-song-count">{{ entry.playCount }} 次</span>
+          </div>
+        </template>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="section-title">存储管理</h3>
+        <div class="stat-row">
+          <span class="stat-label">音频缓存</span>
+          <span class="stat-value">{{ formatMB(cacheSize) }} MB / {{ formatMB(MAX_CACHE_SIZE) }} MB</span>
+        </div>
+        <div class="cache-progress">
+          <div class="cache-progress-bar" :style="{ width: cachePercent + '%' }"></div>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">缓存条目</span>
+          <span class="stat-value">{{ cacheEntryCount }} 条</span>
+        </div>
+        <div class="clear-cache-row">
+          <NButton size="small" type="warning" @click="clearCache">
+            <template #icon>
+              <NIcon><TrashOutline /></NIcon>
+            </template>
+            清理缓存
+          </NButton>
         </div>
       </div>
 
@@ -238,10 +394,125 @@ onMounted(() => {
   color: white;
 }
 
+.btn-group {
+  display: flex;
+  gap: 4px;
+}
+
+.option-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
+.option-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.option-btn.active {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+}
+
 .tool-hint {
   font-size: 12px;
   color: var(--text-tertiary);
   margin-top: 8px;
   line-height: 1.6;
+}
+
+.empty-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  text-align: center;
+  padding: 16px 0;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+
+.stat-row + .stat-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.stat-label {
+  font-size: 14px;
+}
+
+.stat-value {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 8px 0;
+}
+
+.stat-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 4px;
+}
+
+.top-song-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.top-song-rank {
+  min-width: 24px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.top-song-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-song-count {
+  color: var(--accent-color);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cache-progress {
+  height: 6px;
+  background: var(--border-color);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 4px 0;
+}
+
+.cache-progress-bar {
+  height: 100%;
+  background: var(--accent-color);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  min-width: 0;
+}
+
+.clear-cache-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
 }
 </style>

@@ -1,16 +1,36 @@
 <script setup lang="ts">
+import { ref, watch, nextTick } from "vue";
 import { NIcon } from "naive-ui";
 import { CloseOutline, TrashOutline } from "@vicons/ionicons5";
 import { usePlayerStore } from "@/stores/player";
+import { useDragSort } from "@/composables/useDragSort";
 import type { Song } from "@/types";
 
 const emit = defineEmits<{ close: [] }>();
 const player = usePlayerStore();
 
+const listRef = ref<HTMLElement | null>(null);
+
+const { dragIndex, getItemStyle, onMouseDown, isDragging } = useDragSort({
+  listRef,
+  itemSelector: ".playlist-item",
+  ghostClass: "playlist-item drag-ghost",
+  skipSelector: ".item-remove",
+  onDrop: (from, to) => player.movePlaylistItem(from, to),
+});
+
 function playSong(song: Song, index: number) {
+  if (isDragging()) return;
   player.currentIndex = index;
   player.playSong(song);
 }
+
+watch(() => player.currentIndex, async (idx) => {
+  if (idx < 0 || !listRef.value) return;
+  await nextTick();
+  const items = listRef.value!.querySelectorAll<HTMLElement>(".playlist-item");
+  items[idx]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
 </script>
 
 <template>
@@ -31,7 +51,7 @@ function playSong(song: Song, index: number) {
       </div>
     </div>
 
-    <div class="panel-list">
+    <div class="panel-list" ref="listRef">
       <div v-if="player.playlist.length === 0" class="panel-empty">
         <p>播放列表为空</p>
       </div>
@@ -39,10 +59,17 @@ function playSong(song: Song, index: number) {
         v-for="(song, index) in player.playlist"
         :key="song.bvid"
         class="playlist-item"
-        :class="{ active: index === player.currentIndex }"
+        :class="{ active: index === player.currentIndex, dragging: dragIndex === index }"
+        :style="getItemStyle(index)"
+        @mousedown="onMouseDown($event, index)"
         @click="playSong(song, index)"
       >
-        <span class="item-index">{{ index + 1 }}</span>
+        <span v-if="index === player.currentIndex && player.isPlaying" class="playing-indicator">
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+        </span>
+        <span v-else class="item-index">{{ index + 1 }}</span>
         <div class="item-info">
           <p class="item-title">{{ song.title }}</p>
           <p class="item-author">{{ song.author }}</p>
@@ -124,7 +151,8 @@ function playSong(song: Song, index: number) {
   align-items: center;
   gap: 10px;
   padding: 8px 16px;
-  cursor: pointer;
+  cursor: grab;
+  user-select: none;
 }
 
 .playlist-item:hover {
@@ -133,6 +161,18 @@ function playSong(song: Song, index: number) {
 
 .playlist-item.active {
   background: var(--accent-light);
+}
+
+.playlist-item.dragging {
+  visibility: hidden;
+}
+
+.drag-ghost {
+  opacity: 0.85;
+  background: var(--card-hover);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: grabbing;
 }
 
 .item-index {
@@ -181,6 +221,7 @@ function playSong(song: Song, index: number) {
 .item-remove {
   opacity: 0;
   color: var(--text-secondary);
+  cursor: pointer;
 }
 
 .playlist-item:hover .item-remove {
@@ -189,5 +230,31 @@ function playSong(song: Song, index: number) {
 
 .item-remove:hover {
   color: var(--accent-color);
+}
+
+.playing-indicator {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 12px;
+  width: 24px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.playing-indicator .bar {
+  width: 2.5px;
+  border-radius: 1px;
+  background: var(--accent-color);
+  animation: equalizer 0.8s ease-in-out infinite;
+}
+
+.playing-indicator .bar:nth-child(1) { animation-delay: 0s; }
+.playing-indicator .bar:nth-child(2) { animation-delay: 0.2s; }
+.playing-indicator .bar:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes equalizer {
+  0%, 100% { height: 3px; }
+  50% { height: 12px; }
 }
 </style>

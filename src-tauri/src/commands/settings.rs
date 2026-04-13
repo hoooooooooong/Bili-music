@@ -12,6 +12,10 @@ pub struct AppSettings {
     pub theme: String,
     pub cache_size: u64,
     pub volume: f64,
+    pub download_format: String,
+    pub download_quality: String,
+    pub minimize_to_tray: bool,
+    pub autostart_enabled: bool,
 }
 
 impl Default for AppSettings {
@@ -24,6 +28,10 @@ impl Default for AppSettings {
             theme: "dark".into(),
             cache_size: 500,
             volume: 1.0,
+            download_format: "mp3".into(),
+            download_quality: "high".into(),
+            minimize_to_tray: true,
+            autostart_enabled: false,
         }
     }
 }

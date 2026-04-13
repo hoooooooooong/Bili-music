@@ -6,71 +6,68 @@ const player = usePlayerStore();
 const canvas = ref<HTMLCanvasElement | null>(null);
 let ctx: CanvasRenderingContext2D | null = null;
 let animFrame: number | null = null;
-let analyser: AnalyserNode | null = null;
-let audioCtx: AudioContext | null = null;
+let w = 280;
+let h = 72;
 
-function setup() {
-  if (!canvas.value) return;
-  ctx = canvas.value.getContext("2d");
-  audioCtx = new AudioContext();
+function render() {
+  if (!ctx || !canvas.value) return;
+  animFrame = requestAnimationFrame(render);
 
-  const audioEl = document.querySelector("audio") as HTMLAudioElement;
-  if (!audioEl) return;
+  if (!player.isPlaying || document.hidden) return;
 
-  const source = audioCtx.createMediaElementSource(audioEl);
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 128;
+  const analyser = player.getAnalyser();
+  if (!analyser) return;
 
-  source.connect(analyser);
-  analyser.connect(audioCtx.destination);
-
-  draw();
-}
-
-function draw() {
-  if (!ctx || !analyser || !canvas.value) return;
-  const { width, height } = canvas.value;
   const bufferLength = analyser.frequencyBinCount;
   const dataArray = new Uint8Array(bufferLength);
+  analyser.getByteFrequencyData(dataArray);
 
-  function render() {
-    animFrame = requestAnimationFrame(render);
-    analyser!.getByteFrequencyData(dataArray);
-    ctx!.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, w, h);
 
-    const barWidth = (width / bufferLength) * 1.5;
-    let x = 0;
+  // 只取前一半频段（低频和中频更有表现力）
+  const count = Math.floor(bufferLength * 0.6);
+  const gap = 3;
+  const barWidth = (w - gap * (count - 1)) / count;
+  const maxBarH = h * 0.85;
+  const radius = barWidth / 2;
 
-    for (let i = 0; i < bufferLength; i++) {
-      const barHeight = (dataArray[i] / 255) * height * 0.8;
-      const gradient = ctx!.createLinearGradient(
-        0,
-        height,
-        0,
-        height - barHeight
-      );
-      gradient.addColorStop(0, "rgba(251, 114, 153, 0.3)");
-      gradient.addColorStop(1, "rgba(251, 114, 153, 0.8)");
-      ctx!.fillStyle = gradient;
-      ctx!.beginPath();
-      ctx!.roundRect(x, height - barHeight, barWidth - 2, barHeight, 2);
-      ctx!.fill();
-      x += barWidth;
-    }
+  for (let i = 0; i < count; i++) {
+    const val = dataArray[i] / 255;
+    const barH = Math.max(3, val * maxBarH);
+    const x = i * (barWidth + gap);
+
+    const gradient = ctx.createLinearGradient(0, h, 0, h - barH);
+    gradient.addColorStop(0, "rgba(251, 114, 153, 0.2)");
+    gradient.addColorStop(0.5, "rgba(251, 114, 153, 0.6)");
+    gradient.addColorStop(1, "rgba(252, 155, 180, 0.9)");
+    ctx.fillStyle = gradient;
+
+    ctx.beginPath();
+    ctx.roundRect(x, h - barH, barWidth, barH, radius);
+    ctx.fill();
   }
-
-  render();
 }
 
-onMounted(() => setup());
+onMounted(() => {
+  if (!canvas.value) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.value.width = w * dpr;
+  canvas.value.height = h * dpr;
+  canvas.value.style.width = `${w}px`;
+  canvas.value.style.height = `${h}px`;
+  ctx = canvas.value.getContext("2d");
+  ctx?.scale(dpr, dpr);
+  render();
+});
+
 onUnmounted(() => {
   if (animFrame) cancelAnimationFrame(animFrame);
-  if (audioCtx) audioCtx.close();
+  ctx = null;
 });
 </script>
 
 <template>
-  <canvas ref="canvas" class="audio-visualizer" width="240" height="60" />
+  <canvas ref="canvas" class="audio-visualizer" />
 </template>
 
 <style scoped>

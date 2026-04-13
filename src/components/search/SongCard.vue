@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { ref, computed } from "vue";
 import { NIcon, NSpin } from "naive-ui";
 import {
   PlayOutline,
@@ -12,10 +12,21 @@ import {
 import { usePlayerStore } from "@/stores/player";
 import { useFavoritesStore } from "@/stores/favorites";
 import { useDownloadStore } from "@/stores/download";
+import AddToPlaylistDropdown from "../playlists/AddToPlaylistDropdown.vue";
+import SongContextMenu from "../SongContextMenu.vue";
 import type { Song } from "@/types";
 import { formatPlayCount } from "@/utils/formatters";
 
-const props = defineProps<{ song: Song; songList?: Song[] }>();
+const props = defineProps<{
+  song: Song;
+  songList?: Song[];
+  selectMode?: boolean;
+  selected?: boolean;
+}>();
+
+const emit = defineEmits<{
+  "toggle-select": [bvid: string];
+}>();
 
 const player = usePlayerStore();
 const favorites = useFavoritesStore();
@@ -37,6 +48,8 @@ const downloadTask = computed(() => {
   }
   return null;
 });
+
+const contextMenu = ref<{ x: number; y: number } | null>(null);
 
 function togglePlay() {
   if (isCurrentSong.value) {
@@ -60,19 +73,34 @@ async function startDownload(e: Event) {
     console.error("Download failed:", err);
   }
 }
+
+function showContextMenu(e: MouseEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+  contextMenu.value = { x: e.clientX, y: e.clientY };
+}
 </script>
 
 <template>
   <div
     class="song-card"
-    :class="{ playing: isCurrentSong }"
-    @click="togglePlay"
+    :class="{ playing: isCurrentSong, selected: selectMode && selected }"
+    @click="selectMode ? emit('toggle-select', song.bvid) : togglePlay()"
+    @contextmenu.prevent="showContextMenu"
   >
+    <div v-if="selectMode" class="select-checkbox" @click.stop="emit('toggle-select', song.bvid)">
+      <div class="checkbox-inner" :class="{ checked: selected }">
+        <svg v-if="selected" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+    </div>
     <div class="card-cover">
       <img
         :src="song.coverUrl"
         :alt="song.title"
         loading="lazy"
+        @load="($event.target as HTMLImageElement).classList.add('loaded'); ($event.target as HTMLImageElement).parentElement!.classList.add('loaded')"
         @error="($event.target as HTMLImageElement).src = `bili-cover://${song.bvid}`"
       />
       <div class="cover-overlay">
@@ -88,7 +116,14 @@ async function startDownload(e: Event) {
     <div class="card-info">
       <h3 class="card-title">{{ song.title }}</h3>
       <p class="card-author">{{ song.author }}</p>
-      <span class="card-plays">{{ formatPlayCount(song.playCount) }} 播放</span>
+      <span class="card-plays">
+        <span v-if="isCurrentSong" class="playing-indicator">
+          <span class="bar" :class="{ paused: !isPlaying }"></span>
+          <span class="bar" :class="{ paused: !isPlaying }"></span>
+          <span class="bar" :class="{ paused: !isPlaying }"></span>
+        </span>
+        {{ formatPlayCount(song.playCount) }} 播放
+      </span>
     </div>
     <div class="card-actions" @click.stop>
       <button
@@ -102,6 +137,7 @@ async function startDownload(e: Event) {
           <HeartOutline v-else />
         </NIcon>
       </button>
+      <AddToPlaylistDropdown :song="song" />
       <button
         class="action-btn"
         :disabled="!!downloadTask"
@@ -123,6 +159,15 @@ async function startDownload(e: Event) {
         </NIcon>
       </button>
     </div>
+
+    <SongContextMenu
+      v-if="contextMenu"
+      :song="song"
+      :song-list="songList"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      @close="contextMenu = null"
+    />
   </div>
 </template>
 
@@ -149,6 +194,36 @@ async function startDownload(e: Event) {
   background: var(--accent-light);
 }
 
+.song-card.selected {
+  border-color: var(--accent-color);
+  background: var(--accent-light);
+}
+
+.select-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.checkbox-inner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  color: white;
+}
+
+.checkbox-inner.checked {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
 .card-cover {
   position: relative;
   width: 52px;
@@ -156,12 +231,29 @@ async function startDownload(e: Event) {
   border-radius: 8px;
   overflow: hidden;
   flex-shrink: 0;
+  background: var(--skeleton-bg, var(--card-hover));
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.card-cover.loaded {
+  animation: none;
 }
 
 .card-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.card-cover img.loaded {
+  opacity: 1;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .cover-overlay {
@@ -229,6 +321,36 @@ async function startDownload(e: Event) {
 .card-plays {
   font-size: 11px;
   color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.playing-indicator {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 12px;
+}
+
+.playing-indicator .bar {
+  width: 2.5px;
+  border-radius: 1px;
+  background: var(--accent-color);
+  animation: equalizer 0.8s ease-in-out infinite;
+}
+
+.playing-indicator .bar:nth-child(1) { animation-delay: 0s; }
+.playing-indicator .bar:nth-child(2) { animation-delay: 0.2s; }
+.playing-indicator .bar:nth-child(3) { animation-delay: 0.4s; }
+
+.playing-indicator .bar.paused {
+  animation-play-state: paused;
+}
+
+@keyframes equalizer {
+  0%, 100% { height: 3px; }
+  50% { height: 12px; }
 }
 
 .card-actions {

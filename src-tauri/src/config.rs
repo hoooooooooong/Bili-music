@@ -3,6 +3,7 @@ pub const BILIBILI_RELATED_URL: &str = "https://api.bilibili.com/x/web-interface
 pub const BILIBILI_VIEW_URL: &str = "https://api.bilibili.com/x/web-interface/view";
 pub const BILIBILI_PLAY_URL: &str = "https://api.bilibili.com/x/player/playurl";
 pub const BILIBILI_VIDEO_URL: &str = "https://www.bilibili.com/video/";
+pub const BILIBILI_RANKING_URL: &str = "https://api.bilibili.com/x/web-interface/ranking/v2";
 
 pub const NETEASE_SEARCH_URL: &str = "https://music.163.com/api/search/get";
 pub const NETEASE_LYRIC_URL: &str = "https://music.163.com/api/song/lyric";

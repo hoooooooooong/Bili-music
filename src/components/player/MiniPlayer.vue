@@ -12,13 +12,22 @@ import {
   VolumeMuteOutline,
   ListOutline,
   ExpandOutline,
+  TimerOutline,
 } from "@vicons/ionicons5";
 import { usePlayerStore } from "@/stores/player";
+import { usePlayerControls } from "@/composables/usePlayerControls";
+import { useLyrics } from "@/composables/useLyrics";
 import { formatDuration } from "@/utils/formatters";
 
 const emit = defineEmits<{ toggleFull: []; togglePlaylist: [] }>();
 const player = usePlayerStore();
-const showVolume = ref(false);
+const { showVolume, showSleepTimer, sleepTimerDisplay, sleepTimerPresets, setSleepTimerAndClose, clearSleepTimerAndClose, toggleMute } = usePlayerControls();
+const { currentLineIndex, lyrics } = useLyrics();
+
+const currentLine = computed(() => {
+  if (currentLineIndex.value < 0) return "";
+  return lyrics.value[currentLineIndex.value]?.text ?? "";
+});
 
 const playModeIcon = computed(() => {
   switch (player.playMode) {
@@ -36,24 +45,15 @@ const playModeTitle = computed(() => {
   }
 });
 
-const currentLineIndex = computed(() => {
-  if (!player.lyrics?.lyrics?.length) return -1;
-  const time = player.currentTime;
-  const lyrics = player.lyrics.lyrics;
-  for (let i = lyrics.length - 1; i >= 0; i--) {
-    if (lyrics[i].time <= time) return i;
-  }
-  return -1;
-});
-
-const currentLine = computed(() => {
-  if (currentLineIndex.value < 0) return "";
-  return player.lyrics!.lyrics[currentLineIndex.value].text;
-});
+function onWheel(e: WheelEvent) {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.05 : 0.05;
+  player.setVolume(player.volume + delta);
+}
 </script>
 
 <template>
-  <div v-if="player.currentSong" class="mini-player">
+  <div v-if="player.currentSong" class="mini-player" @wheel.passive="onWheel">
     <div v-if="player.playError" class="play-error">{{ player.playError }}</div>
     <div class="progress-bar-wrapper">
       <NSlider
@@ -99,6 +99,40 @@ const currentLine = computed(() => {
       </div>
 
       <div class="player-right">
+        <div
+          class="sleep-timer-wrapper"
+          @mouseenter="showSleepTimer = true"
+          @mouseleave="showSleepTimer = false"
+        >
+          <button class="ctrl-btn small">
+            <NIcon
+              size="16"
+              :color="player.sleepTimerRemaining > 0 ? 'var(--accent-color)' : ''"
+            >
+              <TimerOutline />
+            </NIcon>
+            <span
+              v-if="player.sleepTimerRemaining > 0"
+              class="sleep-timer-count"
+            >{{ sleepTimerDisplay }}</span>
+          </button>
+          <Transition name="fade">
+            <div v-if="showSleepTimer" class="sleep-timer-menu">
+              <p class="sleep-timer-title">定时关闭</p>
+              <button
+                v-for="min in sleepTimerPresets"
+                :key="min"
+                class="sleep-timer-option"
+                @click="setSleepTimerAndClose(min)"
+              >{{ min }}分钟</button>
+              <button
+                v-if="player.sleepTimerRemaining > 0"
+                class="sleep-timer-option cancel"
+                @click="clearSleepTimerAndClose()"
+              >取消定时</button>
+            </div>
+          </Transition>
+        </div>
         <button
           class="ctrl-btn small"
           :title="playModeTitle"
@@ -114,7 +148,7 @@ const currentLine = computed(() => {
         >
           <button
             class="ctrl-btn small"
-            @click="player.setVolume(player.volume > 0 ? 0 : 0.7)"
+            @click="toggleMute()"
           >
             <NIcon size="16">
               <VolumeMuteOutline v-if="player.volume === 0" />
@@ -327,6 +361,62 @@ const currentLine = computed(() => {
   border-radius: 8px;
   padding: 8px 4px;
   box-shadow: var(--shadow);
+}
+
+.sleep-timer-wrapper {
+  position: relative;
+}
+
+.sleep-timer-count {
+  position: absolute;
+  bottom: -2px;
+  font-size: 8px;
+  line-height: 1;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.sleep-timer-menu {
+  position: absolute;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 8px 0;
+  min-width: 110px;
+  box-shadow: var(--shadow);
+}
+
+.sleep-timer-title {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 14px 6px;
+  margin: 0;
+}
+
+.sleep-timer-option {
+  display: block;
+  width: 100%;
+  padding: 5px 14px;
+  font-size: 12px;
+  color: var(--app-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sleep-timer-option:hover {
+  background: var(--card-hover);
+}
+
+.sleep-timer-option.cancel {
+  border-top: 1px solid var(--border-color);
+  margin-top: 4px;
+  padding-top: 7px;
+  color: var(--accent-color);
 }
 
 .fade-enter-active,
