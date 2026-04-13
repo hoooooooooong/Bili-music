@@ -1,0 +1,226 @@
+<script setup lang="ts">
+import { ref, computed } from "vue";
+import { NIcon } from "naive-ui";
+import {
+  SearchOutline,
+  CloseOutline,
+  TimeOutline,
+  ArrowUpOutline,
+} from "@vicons/ionicons5";
+import { useSearchStore } from "@/stores/search";
+import { useHistoryStore } from "@/stores/history";
+
+const searchStore = useSearchStore();
+const historyStore = useHistoryStore();
+
+const query = ref("");
+const showHistory = ref(false);
+const inputRef = ref<HTMLInputElement | null>(null);
+
+const recentSearches = computed(() => historyStore.searchHistory.slice(0, 10));
+
+function doSearch(kw?: string) {
+  const keyword = (kw || query.value).trim();
+  if (!keyword) return;
+  query.value = keyword;
+  historyStore.addSearch(keyword);
+  showHistory.value = false;
+  searchStore.search(keyword);
+}
+
+function clearInput() {
+  query.value = "";
+  searchStore.clear();
+  inputRef.value?.focus();
+}
+
+function selectHistory(kw: string) {
+  query.value = kw;
+  doSearch(kw);
+}
+
+function clearAllHistory() {
+  historyStore.clearSearchHistory();
+}
+
+function onFocus() {
+  if (recentSearches.value.length > 0) showHistory.value = true;
+}
+
+function onBlur() {
+  setTimeout(() => {
+    showHistory.value = false;
+  }, 200);
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === "Enter") doSearch();
+}
+</script>
+
+<template>
+  <div class="search-bar-wrapper">
+    <div class="search-bar">
+      <NIcon size="18" class="search-icon"><SearchOutline /></NIcon>
+      <input
+        ref="inputRef"
+        v-model="query"
+        type="text"
+        placeholder="搜索 B 站音乐..."
+        class="search-input"
+        @focus="onFocus"
+        @blur="onBlur"
+        @keydown="handleKeydown"
+      />
+      <button v-if="query" class="clear-btn" @click="clearInput">
+        <NIcon size="14"><CloseOutline /></NIcon>
+      </button>
+    </div>
+
+    <Transition name="dropdown">
+      <div
+        v-if="showHistory && recentSearches.length > 0"
+        class="search-dropdown"
+      >
+        <div class="dropdown-header">
+          <span class="dropdown-title">
+            <NIcon size="14"><TimeOutline /></NIcon>
+            搜索历史
+          </span>
+          <button class="clear-history-btn" @click="clearAllHistory">
+            <NIcon size="14"><ArrowUpOutline /></NIcon>
+            清空
+          </button>
+        </div>
+        <div class="dropdown-list">
+          <button
+            v-for="kw in recentSearches"
+            :key="kw"
+            class="dropdown-item"
+            @mousedown.prevent="selectHistory(kw)"
+          >
+            {{ kw }}
+          </button>
+        </div>
+      </div>
+    </Transition>
+  </div>
+</template>
+
+<style scoped>
+.search-bar-wrapper {
+  position: relative;
+  flex: 1;
+  max-width: 480px;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 36px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-bar:focus-within {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.search-icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  font-size: 14px;
+  color: var(--app-text);
+  background: transparent;
+}
+
+.search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.clear-btn {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+}
+
+.clear-btn:hover {
+  color: var(--app-text);
+}
+
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+}
+
+.dropdown-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.clear-history-btn {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.clear-history-btn:hover {
+  color: var(--accent-color);
+}
+
+.dropdown-list {
+  padding: 4px 0;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--app-text);
+}
+
+.dropdown-item:hover {
+  background: var(--card-hover);
+}
+
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: opacity 0.15s, transform 0.15s;
+}
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+</style>

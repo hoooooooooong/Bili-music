@@ -1,0 +1,7 @@
+node_modules/
+dist/
+target/
+*.png
+!src-tauri/icons/*.png
+!src-tauri/icons/*.ico
+app-icon.png

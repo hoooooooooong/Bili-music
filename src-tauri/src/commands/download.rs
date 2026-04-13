@@ -1,0 +1,332 @@
+use std::path::PathBuf;
+use tauri::State;
+use crate::core::downloader::BilibiliDownloader;
+use crate::core::converter::AudioConverter;
+use crate::core::searcher::BilibiliSearcher;
+use crate::core::task_manager::TaskManager;
+use crate::config::*;
+use crate::error::{AppError, AppResult};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct DownloadOptions {
+    pub output_dir: Option<String>,
+}
+
+#[tauri::command]
+pub async fn start_download(
+    bvid: String,
+    state: State<'_, TaskManager>,
+    searcher: State<'_, BilibiliSearcher>,
+    options: Option<DownloadOptions>,
+) -> AppResult<String> {
+    if !regex::Regex::new(r"^BV[a-zA-Z0-9]+$")
+        .unwrap()
+        .is_match(&bvid)
+    {
+        return Err(AppError::InvalidParams("无效的 BV 号格式".into()));
+    }
+
+    let task = state.create(&bvid).await;
+    let task_id = task.task_id.clone();
+    let task_id_for_return = task_id.clone();
+    let bvid_clone = bvid.clone();
+
+    // We need to get handles that outlive this function
+    let state_inner = state.inner().clone();
+    let searcher_inner = searcher.inner().clone();
+
+    tokio::spawn(async move {
+        let temp_dir = get_temp_dir();
+        let output_dir = options
+            .and_then(|o| o.output_dir)
+            .map(PathBuf::from)
+            .unwrap_or_else(get_default_output_dir);
+
+        let downloader = BilibiliDownloader;
+        let state_for_callback = state_inner.clone();
+        let task_id_for_callback = task_id.clone();
+
+        let downloaded_file =
+            match downloader
+                .download(&bvid_clone, move |downloaded, total| {
+                    let state = state_for_callback.clone();
+                    let tid = task_id_for_callback.clone();
+                    tokio::spawn(async move {
+                        let progress = if total > 0 {
+                            (downloaded as f64 / total as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+                        state
+                            .update(&tid, |t| {
+                                t.status = "downloading".into();
+                                t.progress = progress;
+                                t.downloaded_bytes = downloaded;
+                                t.total_bytes = total;
+                            })
+                            .await;
+                    });
+                })
+                .await
+            {
+                Ok(f) => f,
+                Err(e) => {
+                    state_inner
+                        .update(&task_id, |t| {
+                            t.status = "error".into();
+                            t.error_message = Some(e.to_string());
+                        })
+                        .await;
+                    return;
+                }
+            };
+
+        // Search for video info
+        let video_info = searcher_inner
+            .search(&bvid_clone, 1)
+            .await
+            .ok()
+            .and_then(|resp| resp.results.into_iter().find(|r| r.bvid == bvid_clone));
+
+        // Download cover
+        let cover_path = if let Some(ref info) = video_info {
+            if !info.cover_url.is_empty() {
+                let client = reqwest::Client::new();
+                if let Ok(resp) = client
+                    .get(&info.cover_url)
+                    .headers(search_headers())
+                    .timeout(std::time::Duration::from_secs(15))
+                    .send()
+                    .await
+                {
+                    if resp.status().is_success() {
+                        let ct = resp
+                            .headers()
+                            .get("content-type")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("image/jpeg");
+                        let ext = if ct.contains("png") {
+                            ".png"
+                        } else if ct.contains("webp") {
+                            ".webp"
+                        } else {
+                            ".jpg"
+                        };
+                        let cover_file = temp_dir.join(format!("{}_cover{}", bvid_clone, ext));
+                        if let Ok(bytes) = resp.bytes().await {
+                            if tokio::fs::write(&cover_file, &bytes).await.is_ok() {
+                                Some(cover_file)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        state_inner
+            .update(&task_id, |t| {
+                t.status = "converting".into();
+                t.progress = 100.0;
+            })
+            .await;
+
+        let raw_name = video_info
+            .as_ref()
+            .map(|i| format!("{} - {}", i.title, i.author))
+            .unwrap_or_else(|| bvid_clone.clone());
+        let safe_name = sanitize_filename(&raw_name);
+        let output_path = output_dir.join(format!("{}.mp3", safe_name));
+
+        match AudioConverter::to_mp3(
+            &downloaded_file,
+            &output_path,
+            cover_path.as_deref(),
+            video_info.as_ref().map(|i| i.title.as_str()),
+            video_info.as_ref().map(|i| i.author.as_str()),
+        )
+        .await
+        {
+            Ok(result_path) => {
+                state_inner
+                    .update(&task_id, |t| {
+                        t.status = "done".into();
+                        t.file_path = Some(result_path.to_str().unwrap().to_string());
+                        t.file_name = Some(format!("{}.mp3", safe_name));
+                    })
+                    .await;
+            }
+            Err(e) => {
+                state_inner
+                    .update(&task_id, |t| {
+                        t.status = "error".into();
+                        t.error_message = Some(e.to_string());
+                    })
+                    .await;
+            }
+        }
+
+        // Cleanup
+        let _ = tokio::fs::remove_file(&downloaded_file).await;
+        if let Some(cp) = cover_path {
+            let _ = tokio::fs::remove_file(cp).await;
+        }
+    });
+
+    Ok(task_id_for_return)
+}
+
+#[tauri::command]
+pub async fn get_download_progress(
+    task_id: String,
+    state: State<'_, TaskManager>,
+) -> AppResult<crate::core::task_manager::TaskProgress> {
+    let task = state
+        .get(&task_id)
+        .await
+        .ok_or_else(|| AppError::TaskNotFound(format!("任务不存在: {}", task_id)))?;
+
+    Ok(crate::core::task_manager::TaskProgress {
+        task_id: task.task_id,
+        bvid: task.bvid,
+        status: task.status,
+        progress: task.progress,
+        downloaded_bytes: task.downloaded_bytes,
+        total_bytes: task.total_bytes,
+        downloaded_text: format_bytes(task.downloaded_bytes),
+        total_text: format_bytes(task.total_bytes),
+        file_path: task.file_path,
+        file_name: task.file_name,
+        error_message: task.error_message,
+    })
+}
+
+fn format_bytes(num: u64) -> String {
+    if num < 1024 {
+        format!("{} B", num)
+    } else if num < 1024 * 1024 {
+        format!("{:.1} KB", num as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", num as f64 / (1024.0 * 1024.0))
+    }
+}
+
+#[tauri::command]
+pub async fn get_downloaded_file_path(
+    task_id: String,
+    state: State<'_, TaskManager>,
+) -> AppResult<String> {
+    let task = state
+        .get(&task_id)
+        .await
+        .ok_or_else(|| AppError::TaskNotFound(format!("任务不存在: {}", task_id)))?;
+
+    if task.status != "done" {
+        return Err(AppError::FileNotReady("文件尚未生成".into()));
+    }
+
+    task.file_path
+        .ok_or_else(|| AppError::FileNotReady("文件路径不存在".into()))
+}
+
+#[tauri::command]
+pub async fn open_in_explorer(path: String) -> AppResult<()> {
+    let p = std::path::Path::new(&path);
+    let dir = p.parent().unwrap_or(p);
+    opener::open(dir).map_err(|e| AppError::Other(format!("打开目录失败: {}", e)))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_audio_url(
+    bvid: String,
+) -> AppResult<crate::core::downloader::AudioUrlInfo> {
+    BilibiliDownloader::get_audio_url(&bvid).await
+}
+
+#[tauri::command]
+pub async fn stream_audio(bvid: String) -> AppResult<String> {
+    // Check cache first
+    let cache_dir = get_temp_dir();
+    tokio::fs::create_dir_all(&cache_dir).await?;
+    let audio_file = cache_dir.join(format!("{}_audio.%(ext)s", bvid));
+
+    // Use yt-dlp to download audio via python
+    let python = find_python().ok_or_else(|| AppError::Other(
+        "未找到 Python，请安装 Python".into(),
+    ))?;
+
+    let output = tokio::process::Command::new(&python)
+        .args([
+            "-m", "yt_dlp",
+            "-f", "bestaudio/best",
+            "--no-playlist",
+            "--no-warnings",
+            "-o", audio_file.to_str().unwrap(),
+            "--extractor-args", "bilibili:prefer_multi_flv_audio=False",
+            &format!("{}{}", crate::config::BILIBILI_VIDEO_URL, bvid),
+        ])
+        .output()
+        .await
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                AppError::Other(format!("未找到 Python: {}", python.display()))
+            } else {
+                AppError::Download(format!("启动下载失败: {}", e))
+            }
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::Download(format!("下载音频失败: {}", stderr)));
+    }
+
+    // Find the actual downloaded file (template: {bvid}_audio.{ext})
+    let base = cache_dir.join(format!("{}_audio", bvid));
+    for ext in &["m4a", "webm", "mp4", "flv", "opus", "mp3"] {
+        let candidate = base.with_extension(ext);
+        if candidate.exists() {
+            return Ok(candidate.to_str().unwrap().to_string());
+        }
+    }
+
+    Err(AppError::Download("音频文件未找到".into()))
+}
+
+/// Find Python executable.
+fn find_python() -> Option<PathBuf> {
+    if let Some(home) = dirs::home_dir() {
+        let candidates = [
+            home.join("AppData/Local/Python/pythoncore-3.14-64/python.exe"),
+            home.join("AppData/Local/Python/pythoncore-3.13-64/python.exe"),
+            home.join("AppData/Local/Python/pythoncore-3.12-64/python.exe"),
+            home.join("AppData/Local/Programs/Python/Python314/python.exe"),
+            home.join("AppData/Local/Programs/Python/Python313/python.exe"),
+            home.join("AppData/Local/Programs/Python/Python312/python.exe"),
+        ];
+        for candidate in &candidates {
+            if candidate.exists() {
+                return Some(candidate.clone());
+            }
+        }
+    }
+    // Try PATH
+    if let Ok(output) = std::process::Command::new("python").arg("--version").output() {
+        if output.status.success() {
+            return Some(PathBuf::from("python"));
+        }
+    }
+    None
+}
