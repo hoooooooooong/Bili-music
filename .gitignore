@@ -1,9 +1,39 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-target/
-*.png
-!src-tauri/icons/*.png
-!src-tauri/icons/*.ico
+src-tauri/target/
+
+# Generated app icon (root level, not the src-tauri ones)
 app-icon.png
+
+# Tauri bundled binaries (large files, should not be in git)
+src-tauri/binaries/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# TypeScript
+*.tsbuildinfo
+
+# Tool directories
 .claude/
 .playwright-mcp/
