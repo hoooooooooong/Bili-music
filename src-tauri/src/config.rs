@@ -4,6 +4,8 @@ pub const BILIBILI_VIEW_URL: &str = "https://api.bilibili.com/x/web-interface/vi
 pub const BILIBILI_PLAY_URL: &str = "https://api.bilibili.com/x/player/playurl";
 pub const BILIBILI_VIDEO_URL: &str = "https://www.bilibili.com/video/";
 pub const BILIBILI_RANKING_URL: &str = "https://api.bilibili.com/x/web-interface/ranking/v2";
+pub const BILIBILI_MEDIALIST_URL: &str = "https://api.bilibili.com/x/v2/fav/folder";
+pub const BILIBILI_MEDIALIST_RESOURCE_URL: &str = "https://api.bilibili.com/x/v3/fav/resource/list";
 
 pub const NETEASE_SEARCH_URL: &str = "https://music.163.com/api/search/get";
 pub const NETEASE_LYRIC_URL: &str = "https://music.163.com/api/song/lyric";
@@ -20,8 +22,8 @@ pub fn search_headers() -> reqwest::header::HeaderMap {
     headers.insert("Referer", "https://www.bilibili.com".parse().unwrap());
     headers.insert("Origin", "https://www.bilibili.com".parse().unwrap());
     headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
+    headers.insert("Accept-Encoding", "identity".parse().unwrap());
     headers.insert("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8".parse().unwrap());
-    headers.insert("Accept-Encoding", "gzip, deflate, br".parse().unwrap());
     headers.insert("Connection", "keep-alive".parse().unwrap());
     headers.insert("Sec-Fetch-Dest", "empty".parse().unwrap());
     headers.insert("Sec-Fetch-Mode", "cors".parse().unwrap());
