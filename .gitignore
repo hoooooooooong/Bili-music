@@ -5,9 +5,6 @@ node_modules/
 dist/
 src-tauri/target/
 
-# Generated app icon (root level, not the src-tauri ones)
-app-icon.png
-
 # Tauri bundled binaries (large files, should not be in git)
 src-tauri/binaries/
 
