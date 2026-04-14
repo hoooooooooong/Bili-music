@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Bili Music",
         "width": 1100,
         "height": 750,
@@ -19,6 +20,36 @@
         "minHeight": 600,
         "decorations": false,
         "transparent": false
+      },
+      {
+        "label": "desktop-lyrics",
+        "title": "桌面歌词",
+        "width": 800,
+        "height": 80,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "skipTaskbar": true,
+        "visible": false,
+        "center": false,
+        "x": 100,
+        "y": 650,
+        "shadow": false
+      },
+      {
+        "label": "mini-player",
+        "title": "Bili Music",
+        "width": 380,
+        "height": 96,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "skipTaskbar": true,
+        "visible": false,
+        "center": true,
+        "shadow": false
       }
     ],
     "security": {

@@ -13,10 +13,12 @@ import {
   ListOutline,
   ExpandOutline,
   TimerOutline,
+  ContractOutline,
 } from "@vicons/ionicons5";
 import { usePlayerStore } from "@/stores/player";
 import { usePlayerControls } from "@/composables/usePlayerControls";
 import { useLyrics } from "@/composables/useLyrics";
+import { useWindowManager } from "@/composables/useWindowManager";
 import { formatDuration } from "@/utils/formatters";
 
 const emit = defineEmits<{ toggleFull: []; togglePlaylist: [] }>();
@@ -49,6 +51,10 @@ function onWheel(e: WheelEvent) {
   e.preventDefault();
   const delta = e.deltaY > 0 ? -0.05 : 0.05;
   player.setVolume(player.volume + delta);
+}
+
+function enterMiniMode() {
+  useWindowManager().enterMiniMode();
 }
 </script>
 
@@ -172,6 +178,9 @@ function onWheel(e: WheelEvent) {
         </div>
         <button class="ctrl-btn small" @click="emit('togglePlaylist')">
           <NIcon size="16"><ListOutline /></NIcon>
+        </button>
+        <button class="ctrl-btn small" title="迷你模式" @click="enterMiniMode">
+          <NIcon size="16"><ContractOutline /></NIcon>
         </button>
         <button class="ctrl-btn small" @click="emit('toggleFull')">
           <NIcon size="16"><ExpandOutline /></NIcon>
@@ -429,13 +438,13 @@ function onWheel(e: WheelEvent) {
 }
 
 .mini-player :deep(.n-slider-rail__fill) {
-  background-color: #fb7299 !important;
+  background-color: var(--accent-color) !important;
 }
 .mini-player :deep(.n-slider-handle) {
-  background-color: #fb7299 !important;
-  border-color: #fb7299 !important;
+  background-color: var(--accent-color) !important;
+  border-color: var(--accent-color) !important;
 }
 .mini-player :deep(.n-slider-dot) {
-  background-color: #fb7299 !important;
+  background-color: var(--accent-color) !important;
 }
 </style>

@@ -4,7 +4,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$BinDir = Join-Path $PSScriptRoot ".." "src-tauri" "binaries"
+$BinDir = Join-Path (Join-Path (Join-Path $PSScriptRoot "..") "src-tauri") "binaries"
 $FfmpegPath = Join-Path $BinDir "ffmpeg.exe"
 
 # Skip if ffmpeg.exe already exists (unless --Force)
@@ -25,42 +25,12 @@ if (Test-Path $ExtractDir) { Remove-Item $ExtractDir -Recurse -Force }
 try {
     Write-Host "[download-ffmpeg] Downloading ffmpeg (GPL build with libmp3lame)..." -ForegroundColor Cyan
 
-    # Use .NET HttpClient for better progress display and TLS support
-    $ProgressPreference = "SilentlyContinue"
+    # Use .NET HttpWebRequest for broad compatibility (Windows PowerShell 5+)
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $ProgressPreference = "SilentlyContinue"
 
-    $httpClient = [System.Net.Http.HttpClient]::new()
-    $response = $httpClient.GetAsync($DownloadUrl, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).Result
-    $response.EnsureSuccessStatusCode()
-
-    $totalBytes = $response.Content.Headers.ContentLength
-    $fileStream = [System.IO.File]::Create($ZipPath)
-    $stream = $response.Content.ReadAsStreamAsync().Result
-    $buffer = New-Object byte[] 81920
-    $downloadedBytes = 0
-    $lastUpdate = [DateTime]::UtcNow
-
-    while ($true) {
-        $read = $stream.ReadAsync($buffer, 0, $buffer.Length).Result
-        if ($read -eq 0) { break }
-        $fileStream.Write($buffer, 0, $read)
-        $downloadedBytes += $read
-
-        $now = [DateTime]::UtcNow
-        if (($now - $lastUpdate).TotalMilliseconds -gt 500) {
-            if ($totalBytes -gt 0) {
-                $percent = [math]::Round($downloadedBytes / $totalBytes * 100)
-                $downloadedMB = [math]::Round($downloadedBytes / 1MB, 1)
-                $totalMB = [math]::Round($totalBytes / 1MB, 1)
-                Write-Host "`r[download-ffmpeg] Downloading... $downloadedMB MB / $totalMB MB ($percent%)" -NoNewline -ForegroundColor Cyan
-            }
-            $lastUpdate = $now
-        }
-    }
-
-    Write-Host ""
-    $fileStream.Close()
-    $httpClient.Dispose()
+    Write-Host "[download-ffmpeg] Downloading... (this may take a while)" -ForegroundColor Cyan
+    Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -UseBasicParsing
 
     Write-Host "[download-ffmpeg] Extracting ffmpeg.exe..." -ForegroundColor Cyan
     Expand-Archive -Path $ZipPath -DestinationPath $ExtractDir -Force

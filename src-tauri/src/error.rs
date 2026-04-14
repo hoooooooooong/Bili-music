@@ -55,4 +55,10 @@ impl From<serde_json::Error> for AppError {
     }
 }
 
+impl From<tauri::Error> for AppError {
+    fn from(err: tauri::Error) -> Self {
+        AppError::Other(format!("Tauri 错误: {}", err))
+    }
+}
+
 pub type AppResult<T> = Result<T, AppError>;

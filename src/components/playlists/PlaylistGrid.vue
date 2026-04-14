@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { NIcon } from "naive-ui";
 import { useMessage } from "naive-ui";
-import { HeartOutline, AddOutline, MusicalNotesOutline, TimeOutline, CloudUploadOutline, CloudDownloadOutline } from "@vicons/ionicons5";
+import { HeartOutline, AddOutline, MusicalNotesOutline, TimeOutline, CloudUploadOutline, CloudDownloadOutline, LogInOutline } from "@vicons/ionicons5";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { usePlaylistStore } from "@/stores/playlists";
@@ -13,6 +13,7 @@ const emit = defineEmits<{
   selectSmartPlaylist: [id: string];
   create: [];
   import: [];
+  importFavorites: [];
 }>();
 
 const playlistStore = usePlaylistStore();
@@ -112,6 +113,17 @@ async function exportAll() {
       <div class="card-meta">
         <span class="card-name">{{ p.name }}</span>
         <span class="card-count">{{ p.songs.length }} 首</span>
+      </div>
+    </button>
+
+    <button class="playlist-card import-card" @click="emit('importFavorites')">
+      <div class="card-covers">
+        <div class="covers-placeholder">
+          <NIcon size="32" color="var(--accent-color)"><LogInOutline /></NIcon>
+        </div>
+      </div>
+      <div class="card-meta">
+        <span class="card-name" style="color: var(--accent-color)">导入B站收藏</span>
       </div>
     </button>
 

@@ -7,6 +7,7 @@ import { readTextFile, writeFile } from "@tauri-apps/plugin-fs";
 import PlaylistGrid from "./PlaylistGrid.vue";
 import PlaylistSongList from "./PlaylistSongList.vue";
 import FavoriteList from "../favorites/FavoriteList.vue";
+import ImportFavoritesDialog from "./ImportFavoritesDialog.vue";
 import { usePlaylistStore } from "@/stores/playlists";
 import { useFavoritesStore } from "@/stores/favorites";
 import { useDownloadStore } from "@/stores/download";
@@ -23,6 +24,7 @@ type View =
   | { kind: "smart"; type: "mostPlayed" | "recentlyPlayed" };
 
 const currentView = ref<View>({ kind: "grid" });
+const showImportFavorites = ref(false);
 
 const selectedPlaylist = computed(() => {
   if (currentView.value.kind !== "playlist") return null;
@@ -152,6 +154,7 @@ function downloadAllFavorites() {
       @select-smart-playlist="selectSmartPlaylist"
       @create="createPlaylist"
       @import="importPlaylists"
+      @import-favorites="showImportFavorites = true"
     />
 
     <PlaylistSongList
@@ -168,6 +171,11 @@ function downloadAllFavorites() {
       :playlist="selectedSmartPlaylist"
       :readonly="true"
       @back="currentView = { kind: 'grid' }"
+    />
+
+    <ImportFavoritesDialog
+      v-if="showImportFavorites"
+      @close="showImportFavorites = false"
     />
   </div>
 </template>

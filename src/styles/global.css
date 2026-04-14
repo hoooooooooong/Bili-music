@@ -48,3 +48,10 @@ input {
   color: inherit;
   background: none;
 }
+
+/* Transparent window styles */
+.transparent-window,
+.transparent-window body,
+.transparent-window #app {
+  background: transparent !important;
+}

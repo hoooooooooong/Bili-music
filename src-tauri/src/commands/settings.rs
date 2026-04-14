@@ -1,9 +1,32 @@
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, Manager, State};
 use crate::core::converter::AudioConverter;
 use crate::core::ffmpeg_path::FfmpegPath;
 use crate::config::get_default_output_dir;
 use crate::error::AppResult;
+
+/// Shared player state for cross-window communication (polling-based)
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedPlayerState {
+    pub current_time: f64,
+    pub duration: f64,
+    pub is_playing: bool,
+    pub current_song: Option<serde_json::Value>,
+    pub cover_url: String,
+    pub lyrics: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowGeometry {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub maximized: bool,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -16,7 +39,20 @@ pub struct AppSettings {
     pub download_quality: String,
     pub minimize_to_tray: bool,
     pub autostart_enabled: bool,
+    #[serde(default = "default_accent_color")]
+    pub accent_color: String,
+    #[serde(default)]
+    pub window_geometry: Option<WindowGeometry>,
+    #[serde(default)]
+    pub desktop_lyrics_enabled: bool,
+    #[serde(default = "default_lyrics_font_size")]
+    pub desktop_lyrics_font_size: u32,
+    #[serde(default)]
+    pub desktop_lyrics_locked: bool,
 }
+
+fn default_accent_color() -> String { "#fb7299".into() }
+fn default_lyrics_font_size() -> u32 { 32 }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -32,6 +68,11 @@ impl Default for AppSettings {
             download_quality: "high".into(),
             minimize_to_tray: true,
             autostart_enabled: false,
+            accent_color: default_accent_color(),
+            window_geometry: None,
+            desktop_lyrics_enabled: false,
+            desktop_lyrics_font_size: default_lyrics_font_size(),
+            desktop_lyrics_locked: false,
         }
     }
 }
@@ -88,3 +129,33 @@ pub async fn check_tools(ffmpeg_path: State<'_, FfmpegPath>) -> AppResult<serde_
         "ffmpeg": ffmpeg,
     }))
 }
+
+/// Update shared player state (called by main window)
+#[tauri::command]
+pub fn update_player_state(
+    _app_handle: AppHandle,
+    state: State<'_, Mutex<SharedPlayerState>>,
+    new_state: SharedPlayerState,
+) {
+    let mut s = state.lock().unwrap();
+    *s = new_state;
+}
+
+/// Get shared player state (called by mini-player / desktop-lyrics windows)
+#[tauri::command]
+pub fn get_player_state(
+    _app_handle: AppHandle,
+    state: State<'_, Mutex<SharedPlayerState>>,
+) -> SharedPlayerState {
+    let s = state.lock().unwrap();
+    s.clone()
+}
+
+/// Emit an event to the main window (cross-window, reliable)
+#[tauri::command]
+pub fn emit_to_main(app_handle: AppHandle, event: String, payload: Option<serde_json::Value>) {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        let _ = window.emit(&event, payload);
+    }
+}
+

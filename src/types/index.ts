@@ -50,6 +50,15 @@ export interface AppSettings {
   downloadQuality: AudioQuality;
   minimizeToTray?: boolean;
   autostartEnabled?: boolean;
+  accentColor?: string;
+}
+
+export interface WindowGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maximized: boolean;
 }
 
 export type AudioFormat = "mp3" | "flac" | "wav" | "aac";
@@ -70,3 +79,22 @@ export interface Playlist {
 }
 
 export type PlayMode = "sequential" | "loop" | "random";
+
+export interface FavoritesFolder {
+  id: number;
+  title: string;
+  cover: string;
+  mediaCount: number;
+}
+
+export interface FavoritesFolderListResponse {
+  folders: FavoritesFolder[];
+  uid: string;
+}
+
+export interface MediaResourcePage {
+  videos: Song[];
+  page: number;
+  total: number;
+  hasMore: boolean;
+}

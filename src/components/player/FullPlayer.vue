@@ -445,7 +445,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
-  color: #fb7299;
+  color: var(--accent-color);
 }
 
 .fp-play-btn {
@@ -542,13 +542,13 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 }
 
 .full-player :deep(.n-slider-rail__fill) {
-  background-color: #fb7299 !important;
+  background-color: var(--accent-color) !important;
 }
 .full-player :deep(.n-slider-handle) {
-  background-color: #fb7299 !important;
-  border-color: #fb7299 !important;
+  background-color: var(--accent-color) !important;
+  border-color: var(--accent-color) !important;
 }
 .full-player :deep(.n-slider-dot) {
-  background-color: #fb7299 !important;
+  background-color: var(--accent-color) !important;
 }
 </style>

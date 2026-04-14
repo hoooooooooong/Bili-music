@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import type { AppSettings, AudioFormat, AudioQuality } from "@/types";
+import type { AppSettings, AudioFormat, AudioQuality, WindowGeometry } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 
@@ -21,6 +21,11 @@ export const useSettingsStore = defineStore("settings", () => {
   const downloadQuality = ref<AudioQuality>("high");
   const minimizeToTray = ref(true);
   const autostartEnabled = ref(false);
+  const accentColor = ref("#fb7299");
+  const windowGeometry = ref<WindowGeometry | null>(null);
+  const desktopLyricsEnabled = ref(false);
+  const desktopLyricsFontSize = ref(32);
+  const desktopLyricsLocked = ref(false);
   const loaded = ref(false);
 
   async function loadSettings() {
@@ -34,6 +39,10 @@ export const useSettingsStore = defineStore("settings", () => {
       downloadQuality.value = (settings.downloadQuality || "high") as AudioQuality;
       minimizeToTray.value = settings.minimizeToTray ?? true;
       autostartEnabled.value = settings.autostartEnabled ?? false;
+      accentColor.value = settings.accentColor ?? "#fb7299";
+      desktopLyricsEnabled.value = (settings as any).desktopLyricsEnabled ?? false;
+      desktopLyricsFontSize.value = (settings as any).desktopLyricsFontSize ?? 32;
+      desktopLyricsLocked.value = (settings as any).desktopLyricsLocked ?? false;
       applyTheme(theme.value);
       loaded.value = true;
     } catch {
@@ -54,6 +63,10 @@ export const useSettingsStore = defineStore("settings", () => {
           downloadQuality: downloadQuality.value,
           minimizeToTray: minimizeToTray.value,
           autostartEnabled: autostartEnabled.value,
+          accentColor: accentColor.value,
+          desktopLyricsEnabled: desktopLyricsEnabled.value,
+          desktopLyricsFontSize: desktopLyricsFontSize.value,
+          desktopLyricsLocked: desktopLyricsLocked.value,
         },
       });
     } catch (e) {
@@ -182,6 +195,11 @@ export const useSettingsStore = defineStore("settings", () => {
     downloadQuality,
     minimizeToTray,
     autostartEnabled,
+    accentColor,
+    windowGeometry,
+    desktopLyricsEnabled,
+    desktopLyricsFontSize,
+    desktopLyricsLocked,
     loaded,
     loadSettings,
     saveSettings,

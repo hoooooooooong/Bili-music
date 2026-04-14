@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { NIcon } from "naive-ui";
 import { useSettingsStore, setThemeClickOrigin } from "@/stores/settings";
-import { SettingsOutline, SunnyOutline, MoonOutline } from "@vicons/ionicons5";
+import { SettingsOutline, SunnyOutline, MoonOutline, ContractOutline } from "@vicons/ionicons5";
 import { useRouter } from "vue-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useWindowManager } from "@/composables/useWindowManager";
 
 const settingsStore = useSettingsStore();
 const router = useRouter();
@@ -34,6 +35,10 @@ function onDragStart(e: MouseEvent) {
 function onDoubleClick() {
   getCurrentWindow().toggleMaximize();
 }
+
+function enterMiniMode() {
+  useWindowManager().enterMiniMode();
+}
 </script>
 
 <template>
@@ -50,6 +55,9 @@ function onDoubleClick() {
       </button>
       <button class="tb-btn" @click="router.push('/settings')" title="设置">
         <NIcon size="16"><SettingsOutline /></NIcon>
+      </button>
+      <button class="tb-btn" @click="enterMiniMode" title="迷你模式">
+        <NIcon size="16"><ContractOutline /></NIcon>
       </button>
       <div class="window-controls">
         <button class="tb-btn wc-btn" @click="minimize" title="最小化">

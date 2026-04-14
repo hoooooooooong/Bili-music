@@ -7,6 +7,8 @@ use core::searcher::BilibiliSearcher;
 use core::lyrics_client::LyricsClient;
 use core::task_manager::TaskManager;
 use core::ffmpeg_path::FfmpegPath;
+use commands::settings::SharedPlayerState;
+use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -115,6 +117,57 @@ pub fn run() {
             app.manage(lyrics_client);
             app.manage(task_manager);
             app.manage(ffmpeg_path);
+            app.manage(Mutex::new(SharedPlayerState::default()));
+
+            // ── Restore window geometry ──
+            {
+                let window = app.get_webview_window("main").unwrap();
+                let settings_path = app.path()
+                    .app_data_dir()
+                    .unwrap_or_else(|_| config::get_default_output_dir().parent().unwrap().to_path_buf())
+                    .join("settings.json");
+
+                if settings_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&settings_path) {
+                        if let Ok(settings) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if let Some(geo) = settings.get("windowGeometry") {
+                                let x = geo.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                let y = geo.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                let w = geo.get("width").and_then(|v| v.as_u64()).unwrap_or(1100) as u32;
+                                let h = geo.get("height").and_then(|v| v.as_u64()).unwrap_or(750) as u32;
+                                let maximized = geo.get("maximized").and_then(|v| v.as_bool()).unwrap_or(false);
+
+                                // Clamp to minimum size
+                                let w = w.max(800);
+                                let h = h.max(600);
+
+                                // Check if position is on screen
+                                let monitors = window.available_monitors().unwrap_or_default();
+                                let mut on_screen = monitors.is_empty();
+                                for mon in &monitors {
+                                    let mon_size = mon.size();
+                                    let mon_pos = mon.position();
+                                    if x >= mon_pos.x && y >= mon_pos.y
+                                        && x < mon_pos.x + mon_size.width as i32
+                                        && y < mon_pos.y + mon_size.height as i32 {
+                                        on_screen = true;
+                                        break;
+                                    }
+                                }
+
+                                if on_screen {
+                                    let _ = window.set_size(tauri::PhysicalSize::new(w, h));
+                                    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                                }
+
+                                if maximized {
+                                    let _ = window.maximize();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             // Initialize Bilibili cookies in background
             tauri::async_runtime::spawn(async {
@@ -154,6 +207,10 @@ pub fn run() {
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
+                        // Hide mini-player when showing main
+                        if let Some(w) = app.get_webview_window("mini-player") {
+                            let _ = w.hide();
+                        }
                     }
                 })
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -161,6 +218,9 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
+                        }
+                        if let Some(w) = app.get_webview_window("mini-player") {
+                            let _ = w.hide();
                         }
                     }
                     "play_pause" => {
@@ -205,6 +265,10 @@ pub fn run() {
                     if minimize_to_tray {
                         api.prevent_close();
                         let _ = window_clone.hide();
+                        // Hide mini-player but keep desktop-lyrics visible
+                        if let Some(w) = app_handle.get_webview_window("mini-player") {
+                            let _ = w.hide();
+                        }
                     }
                 }
             });
@@ -253,6 +317,11 @@ pub fn run() {
             commands::settings::save_settings,
             commands::settings::pick_directory,
             commands::settings::check_tools,
+            commands::settings::update_player_state,
+            commands::settings::get_player_state,
+            commands::settings::emit_to_main,
+            commands::favorites_import::fetch_user_favorites_folders,
+            commands::favorites_import::fetch_favorites_folder_videos,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

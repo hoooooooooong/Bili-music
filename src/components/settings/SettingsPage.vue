@@ -17,6 +17,7 @@ import {
   TrashOutline,
 } from "@vicons/ionicons5";
 import { useSettingsStore, setThemeClickOrigin } from "@/stores/settings";
+import { PRESET_COLORS } from "@/utils/colorUtils";
 import { useHistoryStore } from "@/stores/history";
 import { audioCache, MAX_CACHE_SIZE } from "@/composables/useAudioCache";
 import type { AudioFormat, AudioQuality } from "@/types";
@@ -102,6 +103,40 @@ async function setAutostartEnabled(val: boolean) {
   await settingsStore.setAutostartEnabled(val);
 }
 
+async function setAccentColor(color: string) {
+  settingsStore.accentColor = color;
+  await settingsStore.saveSettings();
+}
+
+async function setCustomAccentColor(e: Event) {
+  const target = e.target as HTMLInputElement;
+  if (target.value) {
+    await setAccentColor(target.value);
+  }
+}
+
+async function setDesktopLyricsEnabled(val: boolean) {
+  settingsStore.desktopLyricsEnabled = val;
+  await settingsStore.saveSettings();
+  if (val) {
+    const { useWindowManager } = await import("@/composables/useWindowManager");
+    useWindowManager().showDesktopLyrics();
+  } else {
+    const { useWindowManager } = await import("@/composables/useWindowManager");
+    useWindowManager().hideDesktopLyrics();
+  }
+}
+
+async function setDesktopLyricsFontSize(size: number) {
+  settingsStore.desktopLyricsFontSize = size;
+  await settingsStore.saveSettings();
+}
+
+async function setDesktopLyricsLocked(val: boolean) {
+  settingsStore.desktopLyricsLocked = val;
+  await settingsStore.saveSettings();
+}
+
 onMounted(() => {
   checkTools();
   refreshCacheInfo();
@@ -145,6 +180,33 @@ onMounted(() => {
             >
               跟随系统
             </button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <span class="setting-label">主题色</span>
+          <div class="accent-color-section">
+            <div class="preset-colors">
+              <button
+                v-for="preset in PRESET_COLORS"
+                :key="preset.color"
+                class="color-dot"
+                :class="{ active: settingsStore.accentColor === preset.color }"
+                :style="{ backgroundColor: preset.color }"
+                :title="preset.name"
+                @click="setAccentColor(preset.color)"
+              >
+                <CheckmarkCircleOutline v-if="settingsStore.accentColor === preset.color" class="color-check" />
+              </button>
+            </div>
+            <label class="custom-color-btn" title="自定义颜色">
+              <span class="custom-color-preview" :style="{ backgroundColor: settingsStore.accentColor }"></span>
+              <input
+                type="color"
+                :value="settingsStore.accentColor"
+                class="color-input"
+                @input="setCustomAccentColor"
+              />
+            </label>
           </div>
         </div>
       </div>
@@ -208,6 +270,38 @@ onMounted(() => {
           <NSwitch
             :value="settingsStore.autostartEnabled"
             @update:value="setAutostartEnabled"
+          />
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="section-title">桌面歌词</h3>
+        <div class="setting-item">
+          <span class="setting-label">启用桌面歌词</span>
+          <NSwitch
+            :value="settingsStore.desktopLyricsEnabled"
+            @update:value="setDesktopLyricsEnabled"
+          />
+        </div>
+        <div class="setting-item column">
+          <div class="slider-header">
+            <span class="setting-label">歌词字号</span>
+            <span class="slider-value">{{ settingsStore.desktopLyricsFontSize }}px</span>
+          </div>
+          <input
+            type="range"
+            class="font-size-slider"
+            min="10"
+            max="50"
+            :value="settingsStore.desktopLyricsFontSize"
+            @input="setDesktopLyricsFontSize(Number(($event.target as HTMLInputElement).value))"
+          />
+        </div>
+        <div class="setting-item">
+          <span class="setting-label">锁定歌词位置</span>
+          <NSwitch
+            :value="settingsStore.desktopLyricsLocked"
+            @update:value="setDesktopLyricsLocked"
           />
         </div>
       </div>
@@ -419,6 +513,47 @@ onMounted(() => {
   color: white;
 }
 
+.setting-item.column {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.slider-value {
+  font-size: 13px;
+  color: var(--accent-color);
+  font-weight: 500;
+}
+
+.font-size-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-color);
+  outline: none;
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+.font-size-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
 .tool-hint {
   font-size: 12px;
   color: var(--text-tertiary);
@@ -514,5 +649,64 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   margin-top: 12px;
+}
+
+.accent-color-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.preset-colors {
+  display: flex;
+  gap: 6px;
+}
+
+.color-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s;
+}
+
+.color-dot:hover {
+  transform: scale(1.1);
+}
+
+.color-dot.active {
+  border-color: var(--app-text);
+}
+
+.color-check {
+  font-size: 14px;
+  color: white;
+}
+
+.custom-color-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px dashed var(--border-color);
+  position: relative;
+}
+
+.custom-color-preview {
+  position: absolute;
+  inset: 0;
+}
+
+.color-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
 }
 </style>
