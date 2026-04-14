@@ -4,7 +4,8 @@ import { NIcon } from "naive-ui";
 import { useMessage } from "naive-ui";
 import {
   ArrowBackOutline, PlayOutline, TrashOutline, DownloadOutline,
-  ImageOutline, RemoveCircleOutline, MusicalNoteOutline, CloudDownloadOutline
+  ImageOutline, RemoveCircleOutline, MusicalNoteOutline, CloudDownloadOutline,
+  SwapVerticalOutline
 } from "@vicons/ionicons5";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
@@ -29,7 +30,20 @@ const player = usePlayerStore();
 const downloadStore = useDownloadStore();
 const message = useMessage();
 
-const sortedSongs = computed(() => [...props.playlist.songs].reverse());
+type SortOrder = "desc" | "asc";
+const sortOrder = ref<SortOrder>("desc");
+
+const sortedSongs = computed(() => {
+  const songs = [...props.playlist.songs];
+  if (sortOrder.value === "desc") {
+    songs.reverse();
+  }
+  return songs;
+});
+
+function toggleSortOrder() {
+  sortOrder.value = sortOrder.value === "desc" ? "asc" : "desc";
+}
 
 function playAll() {
   if (sortedSongs.value.length > 0) {
@@ -176,6 +190,14 @@ const { dragIndex, getItemStyle, onMouseDown } = useDragSort({
         <span class="header-count">{{ playlist.songs.length }} 首</span>
       </div>
       <div class="header-actions">
+        <button
+          class="header-btn"
+          :disabled="sortedSongs.length === 0"
+          @click="toggleSortOrder"
+          :title="sortOrder === 'desc' ? '按时间降序（最新在前）' : '按时间升序（最早在前）'"
+        >
+          <NIcon size="18"><SwapVerticalOutline /></NIcon>
+        </button>
         <button
           class="header-btn"
           :disabled="sortedSongs.length === 0"

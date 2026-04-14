@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { NIcon, NSlider } from "naive-ui";
 import {
   ChevronDownOutline,
@@ -16,13 +16,18 @@ import {
   TimerOutline,
   AddOutline,
   RemoveOutline,
+  ListOutline,
+  CloseOutline,
+  TrashOutline,
 } from "@vicons/ionicons5";
 import { usePlayerStore } from "@/stores/player";
 import { useFavoritesStore } from "@/stores/favorites";
 import { useLyricOffsetsStore } from "@/stores/lyricOffsets";
 import { usePlayerControls } from "@/composables/usePlayerControls";
 import { useLyrics } from "@/composables/useLyrics";
+import { useDragSort } from "@/composables/useDragSort";
 import { formatDuration } from "@/utils/formatters";
+import type { Song } from "@/types";
 import SpinningDisc from "./SpinningDisc.vue";
 import ScrollingLyrics from "./ScrollingLyrics.vue";
 import AudioVisualizer from "./AudioVisualizer.vue";
@@ -73,6 +78,30 @@ const bgStyle = computed(() => {
   };
 });
 
+const showPlaylist = ref(false);
+const fpListRef = ref<HTMLElement | null>(null);
+
+const { dragIndex: fpDragIndex, getItemStyle: fpGetItemStyle, onMouseDown: fpOnMouseDown, isDragging: fpIsDragging } = useDragSort({
+  listRef: fpListRef,
+  itemSelector: ".fp-playlist-item",
+  ghostClass: "fp-playlist-item fp-drag-ghost",
+  skipSelector: ".fp-item-remove",
+  onDrop: (from, to) => player.movePlaylistItem(from, to),
+});
+
+function fpPlaySong(song: Song, index: number) {
+  if (fpIsDragging()) return;
+  player.currentIndex = index;
+  player.playSong(song);
+}
+
+watch(() => player.currentIndex, async (idx) => {
+  if (idx < 0 || !fpListRef.value || !showPlaylist.value) return;
+  await nextTick();
+  const items = fpListRef.value!.querySelectorAll<HTMLElement>(".fp-playlist-item");
+  items[idx]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+
 function handleKeydown(e: KeyboardEvent) {
   if (e.code === "Escape") emit("close");
 }
@@ -121,6 +150,55 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
             @seek="seekToLine"
           />
         </div>
+
+        <Transition name="fp-playlist-slide">
+          <div v-if="showPlaylist" class="fp-playlist-panel">
+          <div class="fp-playlist-header">
+            <h3>播放列表 ({{ player.playlist.length }})</h3>
+            <div class="fp-playlist-actions">
+              <button
+                class="fp-playlist-btn"
+                @click="player.clearPlaylist()"
+                title="清空"
+              >
+                <NIcon size="14"><TrashOutline /></NIcon>
+              </button>
+              <button class="fp-playlist-btn" @click="showPlaylist = false">
+                <NIcon size="14"><CloseOutline /></NIcon>
+              </button>
+            </div>
+          </div>
+          <div class="fp-playlist-list" ref="fpListRef">
+            <div v-if="player.playlist.length === 0" class="fp-playlist-empty">
+              <p>播放列表为空</p>
+            </div>
+            <div
+              v-for="(song, index) in player.playlist"
+              :key="song.bvid"
+              class="fp-playlist-item"
+              :class="{ active: index === player.currentIndex, dragging: fpDragIndex === index }"
+              :style="fpGetItemStyle(index)"
+              @mousedown="fpOnMouseDown($event, index)"
+              @click="fpPlaySong(song, index)"
+            >
+              <span v-if="index === player.currentIndex && player.isPlaying" class="fp-playing-indicator">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+              </span>
+              <span v-else class="fp-item-index">{{ index + 1 }}</span>
+              <div class="fp-item-info">
+                <p class="fp-item-title">{{ song.title }}</p>
+                <p class="fp-item-author">{{ song.author }}</p>
+              </div>
+              <div class="fp-item-duration">{{ song.duration }}</div>
+              <button class="fp-item-remove" @click.stop="player.removeFromPlaylist(index)">
+                <NIcon size="12"><CloseOutline /></NIcon>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
       </div>
 
       <div class="fp-controls">
@@ -239,6 +317,11 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
               </div>
             </Transition>
           </div>
+          <button class="fp-ctrl" @click="showPlaylist = !showPlaylist" title="播放列表">
+            <NIcon size="20" :color="showPlaylist ? 'var(--accent-color)' : ''">
+              <ListOutline />
+            </NIcon>
+          </button>
         </div>
       </div>
     </div>
@@ -315,6 +398,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 }
 
 .fp-main {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
@@ -550,5 +634,204 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 }
 .full-player :deep(.n-slider-dot) {
   background-color: var(--accent-color) !important;
+}
+
+/* Full player playlist panel */
+.fp-playlist-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 320px;
+  z-index: 10;
+  background: rgba(20, 20, 30, 0.95);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+}
+
+.fp-playlist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.fp-playlist-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.fp-playlist-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.fp-playlist-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+}
+
+.fp-playlist-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.fp-playlist-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.fp-playlist-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.fp-playlist-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.fp-playlist-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 13px;
+}
+
+.fp-playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: grab;
+  user-select: none;
+}
+
+.fp-playlist-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.fp-playlist-item.active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.fp-playlist-item.dragging {
+  visibility: hidden;
+}
+
+.fp-drag-ghost {
+  opacity: 0.85;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: grabbing;
+}
+
+.fp-item-index {
+  width: 22px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.fp-playlist-item.active .fp-item-index {
+  color: var(--accent-color);
+}
+
+.fp-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.fp-item-title {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-playlist-item.active .fp-item-title {
+  color: var(--accent-color);
+  font-weight: 500;
+}
+
+.fp-item-author {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-item-duration {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.fp-item-remove {
+  opacity: 0;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.fp-playlist-item:hover .fp-item-remove {
+  opacity: 1;
+}
+
+.fp-item-remove:hover {
+  color: var(--accent-color);
+}
+
+.fp-playing-indicator {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 12px;
+  width: 22px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.fp-playing-indicator .bar {
+  width: 2.5px;
+  border-radius: 1px;
+  background: var(--accent-color);
+  animation: fp-equalizer 0.8s ease-in-out infinite;
+}
+
+.fp-playing-indicator .bar:nth-child(1) { animation-delay: 0s; }
+.fp-playing-indicator .bar:nth-child(2) { animation-delay: 0.2s; }
+.fp-playing-indicator .bar:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes fp-equalizer {
+  0%, 100% { height: 3px; }
+  50% { height: 12px; }
+}
+
+.fp-playlist-slide-enter-active,
+.fp-playlist-slide-leave-active {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.fp-playlist-slide-enter-from,
+.fp-playlist-slide-leave-to {
+  transform: translateX(40px);
+  opacity: 0;
 }
 </style>
