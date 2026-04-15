@@ -134,3 +134,16 @@ pub async fn get_comment_replies(
     }
     searcher.get_replies(&bvid, root, page).await
 }
+
+#[tauri::command]
+pub async fn get_danmaku(
+    bvid: String,
+    searcher: State<'_, BilibiliSearcher>,
+) -> AppResult<crate::core::searcher::DanmakuResponse> {
+    if bvid.trim().is_empty() {
+        return Err(crate::error::AppError::InvalidParams(
+            "bvid 不能为空".into(),
+        ));
+    }
+    searcher.get_danmaku(&bvid).await
+}

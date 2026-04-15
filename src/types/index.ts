@@ -118,3 +118,13 @@ export interface CommentResponse {
   comments: Comment[];
   isEnd: boolean;
 }
+
+export interface Danmaku {
+  progress: number;
+  content: string;
+  color: string;
+}
+
+export interface DanmakuResponse {
+  danmaku: Danmaku[];
+}

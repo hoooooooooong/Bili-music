@@ -45,6 +45,8 @@ export const usePlayerStore = defineStore("player", () => {
   const currentIndex = ref(-1);
   const playMode = ref<PlayMode>("sequential");
   const isPlaying = ref(false);
+  // Persisted play state: saved before audio.pause() resets isPlaying
+  const _wasPlayingBeforeClose = ref(false);
   const currentTime = ref(0);
   const duration = ref(0);
   const volume = ref(1);
@@ -79,7 +81,8 @@ export const usePlayerStore = defineStore("player", () => {
     audio.volume = volume.value;
   }
 
-  async function playSong(song: Song, list?: Song[], autoPlay: boolean = true) {
+  async function playSong(song: Song, list?: Song[], autoPlay: boolean = true, seekTime: number = 0) {
+    _pendingSeekTime.value = seekTime;
     currentSong.value = song;
     emit("song:played", song);
 
@@ -132,6 +135,11 @@ export const usePlayerStore = defineStore("player", () => {
       audio.pause();
       isPlaying.value = false;
     } else {
+      if (_pendingSeekTime.value > 0) {
+        audio.currentTime = _pendingSeekTime.value;
+        currentTime.value = _pendingSeekTime.value;
+        _pendingSeekTime.value = 0;
+      }
       audio.play().then(() => {
         isPlaying.value = true;
       }).catch(() => {});
@@ -295,7 +303,6 @@ export const usePlayerStore = defineStore("player", () => {
     if (_pendingSeekTime.value > 0) {
       audio.currentTime = _pendingSeekTime.value;
       currentTime.value = _pendingSeekTime.value;
-      _pendingSeekTime.value = 0;
     }
     console.log("[audio] loadedmetadata, duration:", audio.duration, "src:", audio.src);
   });
@@ -326,17 +333,15 @@ export const usePlayerStore = defineStore("player", () => {
   async function restoreLastState() {
     const song = currentSong.value;
     const savedTime = _savedCurrentTime.value;
+    const wasPlaying = _wasPlayingBeforeClose.value;
     if (!song) return;
 
-    // Clear saved time to prevent stale restore on next restart
+    // Clear saved state to prevent stale restore on next restart
     _savedCurrentTime.value = 0;
+    _wasPlayingBeforeClose.value = false;
 
     const list = playlist.value.length > 0 ? playlist.value : undefined;
-    await playSong(song, list, false);
-
-    if (savedTime > 0) {
-      _pendingSeekTime.value = savedTime;
-    }
+    await playSong(song, list, wasPlaying, savedTime);
   }
 
   function cleanup() {
@@ -346,6 +351,7 @@ export const usePlayerStore = defineStore("player", () => {
     }
     // Save current playback position for next session
     _savedCurrentTime.value = audio.currentTime;
+    _wasPlayingBeforeClose.value = isPlaying.value;
     if (_timeSaveTimer) {
       clearInterval(_timeSaveTimer);
       _timeSaveTimer = null;
@@ -400,6 +406,6 @@ export const usePlayerStore = defineStore("player", () => {
   };
 }, {
   persist: {
-    paths: ['currentSong', 'playlist', 'currentIndex', 'playMode', '_savedCurrentTime'],
+    paths: ['currentSong', 'playlist', 'currentIndex', 'playMode', '_savedCurrentTime', '_wasPlayingBeforeClose'],
   },
 });

@@ -28,11 +28,13 @@ import { usePlayerControls } from "@/composables/usePlayerControls";
 import { useLyrics } from "@/composables/useLyrics";
 import { useDragSort } from "@/composables/useDragSort";
 import { formatDuration } from "@/utils/formatters";
-import type { Song } from "@/types";
+import { invoke } from "@tauri-apps/api/core";
+import type { Song, Danmaku } from "@/types";
 import SpinningDisc from "./SpinningDisc.vue";
 import ScrollingLyrics from "./ScrollingLyrics.vue";
 import AudioVisualizer from "./AudioVisualizer.vue";
 import CommentPanel from "./CommentPanel.vue";
+import DanmakuLayer from "./DanmakuLayer.vue";
 
 const emit = defineEmits<{ close: [] }>();
 const player = usePlayerStore();
@@ -82,6 +84,8 @@ const bgStyle = computed(() => {
 
 const showPlaylist = ref(false);
 const showComments = ref(false);
+const danmakuEnabled = ref(localStorage.getItem("danmaku-enabled") === "true");
+const danmakuList = ref<Danmaku[]>([]);
 const fpListRef = ref<HTMLElement | null>(null);
 
 const { dragIndex: fpDragIndex, getItemStyle: fpGetItemStyle, onMouseDown: fpOnMouseDown, isDragging: fpIsDragging } = useDragSort({
@@ -106,6 +110,46 @@ watch(showComments, (v) => {
   if (v) showPlaylist.value = false;
 });
 
+watch(danmakuEnabled, (v) => {
+  localStorage.setItem("danmaku-enabled", v ? "true" : "false");
+});
+
+watch(
+  () => player.currentSong?.bvid,
+  async (bvid) => {
+    console.log("[danmaku] bvid changed:", bvid, "enabled:", danmakuEnabled.value);
+    danmakuList.value = [];
+    if (!bvid) return;
+    if (!danmakuEnabled.value) return;
+    try {
+      console.log("[danmaku] fetching for bvid:", bvid);
+      const res = await invoke<{ danmaku: Danmaku[] }>("get_danmaku", { bvid });
+      console.log("[danmaku] received:", res.danmaku.length, "items", res.danmaku.length > 0 ? res.danmaku.slice(0, 3) : "");
+      danmakuList.value = res.danmaku;
+    } catch (e) {
+      console.error("[danmaku] fetch error:", e);
+      danmakuList.value = [];
+    }
+  }
+);
+
+watch(danmakuEnabled, async (enabled) => {
+  console.log("[danmaku] toggle:", enabled, "currentSong:", player.currentSong?.bvid);
+  if (enabled && player.currentSong) {
+    try {
+      console.log("[danmaku] fetching for bvid:", player.currentSong.bvid);
+      const res = await invoke<{ danmaku: Danmaku[] }>("get_danmaku", { bvid: player.currentSong.bvid });
+      console.log("[danmaku] received:", res.danmaku.length, "items", res.danmaku.length > 0 ? res.danmaku.slice(0, 3) : "");
+      danmakuList.value = res.danmaku;
+    } catch (e) {
+      console.error("[danmaku] fetch error:", e);
+      danmakuList.value = [];
+    }
+  } else {
+    danmakuList.value = [];
+  }
+});
+
 watch(() => player.currentIndex, async (idx) => {
   if (idx < 0 || !fpListRef.value || !showPlaylist.value) return;
   await nextTick();
@@ -117,7 +161,18 @@ function handleKeydown(e: KeyboardEvent) {
   if (e.code === "Escape") emit("close");
 }
 
-onMounted(() => window.addEventListener("keydown", handleKeydown));
+onMounted(async () => {
+  window.addEventListener("keydown", handleKeydown);
+  // Restore danmaku data if enabled on mount
+  if (danmakuEnabled.value && player.currentSong) {
+    try {
+      const res = await invoke<{ danmaku: Danmaku[] }>("get_danmaku", { bvid: player.currentSong.bvid });
+      danmakuList.value = res.danmaku;
+    } catch {
+      danmakuList.value = [];
+    }
+  }
+});
 onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 </script>
 
@@ -147,6 +202,13 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
       </div>
 
       <div class="fp-main">
+        <DanmakuLayer
+          v-if="danmakuEnabled"
+          :danmaku-list="danmakuList"
+          :current-time="player.currentTime"
+          :duration="player.duration"
+          :playing="player.isPlaying"
+        />
         <div class="fp-left">
           <div class="fp-cover-area">
             <SpinningDisc />
@@ -342,6 +404,12 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
               <ChatbubblesOutline />
             </NIcon>
           </button>
+          <button
+            class="fp-ctrl danmaku-btn"
+            :class="{ active: danmakuEnabled }"
+            @click="danmakuEnabled = !danmakuEnabled"
+            title="弹幕"
+          >弹</button>
         </div>
       </div>
     </div>
@@ -540,6 +608,17 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 
 .fp-ctrl:hover {
   background: rgba(255, 255, 255, 0.1);
+}
+
+.danmaku-btn {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0;
+}
+
+.danmaku-btn.active {
+  color: var(--accent-color);
 }
 
 .fp-ctrl .loop-badge {

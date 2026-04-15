@@ -7,6 +7,21 @@ use serde::{Deserialize, Serialize};
 use crate::config::*;
 use crate::error::{AppError, AppResult};
 
+fn read_varint(buf: &[u8], pos: &mut usize) -> u64 {
+    let mut val: u64 = 0;
+    let mut shift = 0;
+    while *pos < buf.len() {
+        let b = buf[*pos];
+        *pos += 1;
+        val |= ((b & 0x7f) as u64) << shift;
+        shift += 7;
+        if b & 0x80 == 0 {
+            break;
+        }
+    }
+    val
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
@@ -55,10 +70,25 @@ pub struct CommentResponse {
     pub is_end: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Danmaku {
+    pub progress: f64,
+    pub content: String,
+    pub color: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DanmakuResponse {
+    pub danmaku: Vec<Danmaku>,
+}
+
 #[derive(Clone)]
 pub struct BilibiliSearcher {
     client: Client,
     aid_cache: Arc<std::sync::Mutex<HashMap<String, i64>>>,
+    cid_cache: Arc<std::sync::Mutex<HashMap<String, i64>>>,
 }
 
 impl BilibiliSearcher {
@@ -78,6 +108,7 @@ impl BilibiliSearcher {
         Self {
             client,
             aid_cache: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            cid_cache: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
     }
 
@@ -279,6 +310,171 @@ impl BilibiliSearcher {
             .ok_or_else(|| AppError::Search("获取视频 aid 失败".into()))?;
         self.aid_cache.lock().unwrap().insert(bvid.to_string(), aid);
         Ok(aid)
+    }
+
+    async fn get_cid(&self, bvid: &str) -> AppResult<i64> {
+        if let Some(&cid) = self.cid_cache.lock().unwrap().get(bvid) {
+            return Ok(cid);
+        }
+
+        let resp = self
+            .client
+            .get(BILIBILI_VIEW_URL)
+            .query(&[("bvid", bvid)])
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+        let data: serde_json::Value = resp.json().await?;
+
+        let cid = data
+            .get("data")
+            .and_then(|d| d.get("cid"))
+            .and_then(|c| c.as_i64())
+            .or_else(|| {
+                data.get("data")
+                    .and_then(|d| d.get("pages"))
+                    .and_then(|p| p.as_array())
+                    .and_then(|pages| pages.first())
+                    .and_then(|p| p.get("cid"))
+                    .and_then(|c| c.as_i64())
+            })
+            .ok_or_else(|| AppError::Search("获取视频 cid 失败".into()))?;
+
+        self.cid_cache.lock().unwrap().insert(bvid.to_string(), cid);
+        Ok(cid)
+    }
+
+    pub async fn get_danmaku(&self, bvid: &str) -> AppResult<DanmakuResponse> {
+        let cid = self.get_cid(bvid).await?;
+        eprintln!("[danmaku] bvid={} cid={}", bvid, cid);
+
+        // Use the new segment-based danmaku API (protobuf format)
+        // Each segment covers ~6 minutes (360 seconds)
+        let mut danmaku_list = Vec::new();
+
+        for segment_index in 1..=30 {
+            let resp = self
+                .client
+                .get(BILIBILI_DANMAKU_SEG_URL)
+                .query(&[
+                    ("oid", &cid.to_string()),
+                    ("segment_index", &segment_index.to_string()),
+                    ("type", &"1".to_string()),
+                ])
+                .timeout(std::time::Duration::from_secs(10))
+                .send()
+                .await?;
+
+            if resp.status() != reqwest::StatusCode::OK {
+                break;
+            }
+
+            let body = resp.bytes().await?;
+            if body.is_empty() || body.len() < 10 {
+                break;
+            }
+
+            // Parse protobuf: top-level is repeated field 1 (length-delimited messages)
+            let mut pos = 0;
+            while pos < body.len() {
+                let tag = body[pos];
+                let field_num = tag >> 3;
+                let wire_type = tag & 0x7;
+                pos += 1;
+
+                if field_num != 1 || wire_type != 2 {
+                    // Skip unknown fields
+                    if wire_type == 0 {
+                        while pos < body.len() && body[pos] & 0x80 != 0 { pos += 1; }
+                        if pos < body.len() { pos += 1; }
+                    } else if wire_type == 2 {
+                        let len = read_varint(&body, &mut pos);
+                        pos += len as usize;
+                    } else {
+                        break;
+                    }
+                    continue;
+                }
+
+                let msg_len = read_varint(&body, &mut pos) as usize;
+                if pos + msg_len > body.len() { break; }
+                let msg = &body[pos..pos + msg_len];
+                pos += msg_len;
+
+                // Parse danmaku message fields:
+                // field 1: fixed32 (id)
+                // field 2: varint (progress in milliseconds)
+                // field 3: varint (mode: 1=scroll, 4=top, 5=bottom)
+                // field 4: varint (font size)
+                // field 5: varint (color as uint32)
+                // field 7: string (content)
+                let mut progress_ms: f64 = 0.0;
+                let mut mode: u32 = 1;
+                let mut color_int: u32 = 16777215;
+                let mut content = String::new();
+
+                let mut mpos = 0;
+                while mpos < msg.len() {
+                    let mtag = msg[mpos];
+                    let mfield = mtag >> 3;
+                    let mwtype = mtag & 0x7;
+                    mpos += 1;
+
+                    match (mfield, mwtype) {
+                        (1, 5) => { mpos += 4; } // fixed32 id
+                        (2, 0) => { progress_ms = read_varint(msg, &mut mpos) as f64; }
+                        (3, 0) => { mode = read_varint(msg, &mut mpos) as u32; }
+                        (4, 0) => { let _ = read_varint(msg, &mut mpos); } // font size
+                        (5, 0) => { color_int = read_varint(msg, &mut mpos) as u32; }
+                        (7, 2) => {
+                            let slen = read_varint(msg, &mut mpos) as usize;
+                            if mpos + slen <= msg.len() {
+                                content = String::from_utf8_lossy(&msg[mpos..mpos + slen]).to_string();
+                                mpos += slen;
+                            }
+                        }
+                        (8, 0) => { let _ = read_varint(msg, &mut mpos); } // timestamp
+                        (9, 0) => { let _ = read_varint(msg, &mut mpos); } // pool type
+                        _ => {
+                            // Skip unknown field
+                            if mwtype == 0 {
+                                while mpos < msg.len() && msg[mpos] & 0x80 != 0 { mpos += 1; }
+                                if mpos < msg.len() { mpos += 1; }
+                            } else if mwtype == 2 {
+                                let slen = read_varint(msg, &mut mpos) as usize;
+                                mpos += slen;
+                            } else if mwtype == 5 {
+                                mpos += 4;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                let content = content.trim().to_string();
+                if content.is_empty() {
+                    continue;
+                }
+
+                // Only include scrolling danmaku (mode 1-3)
+                if mode > 3 {
+                    continue;
+                }
+
+                danmaku_list.push(Danmaku {
+                    progress: progress_ms / 1000.0,
+                    content,
+                    color: format!("#{:06x}", color_int),
+                });
+            }
+        }
+
+        eprintln!("[danmaku] total parsed {} items", danmaku_list.len());
+
+        danmaku_list.sort_by(|a, b| a.progress.partial_cmp(&b.progress).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(DanmakuResponse { danmaku: danmaku_list })
     }
 
     pub async fn get_comments(&self, bvid: &str, page: u32) -> AppResult<CommentResponse> {
