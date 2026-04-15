@@ -58,6 +58,18 @@ export const usePlayerStore = defineStore("player", () => {
   const sleepTimerTotal = ref(0);
   let _sleepTimerInterval: ReturnType<typeof setInterval> | null = null;
 
+  // Persistence: throttled time save (every 3s) + pending seek for restore
+  const _savedCurrentTime = ref(0);
+  let _timeSaveTimer: ReturnType<typeof setInterval> | null = null;
+  const _pendingSeekTime = ref(0);
+
+  function ensureTimeSaveTimer() {
+    if (_timeSaveTimer) return;
+    _timeSaveTimer = setInterval(() => {
+      _savedCurrentTime.value = audio.currentTime;
+    }, 3000);
+  }
+
   const progress = computed(() =>
     duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0
   );
@@ -67,7 +79,7 @@ export const usePlayerStore = defineStore("player", () => {
     audio.volume = volume.value;
   }
 
-  async function playSong(song: Song, list?: Song[]) {
+  async function playSong(song: Song, list?: Song[], autoPlay: boolean = true) {
     currentSong.value = song;
     emit("song:played", song);
 
@@ -96,10 +108,14 @@ export const usePlayerStore = defineStore("player", () => {
       audio.src = blobUrl;
       audio.volume = volume.value;
 
-      await audio.play();
-      isPlaying.value = true;
-      // 确保 AudioContext 在用户交互后恢复
-      getAnalyser();
+      ensureTimeSaveTimer();
+
+      if (autoPlay) {
+        await audio.play();
+        isPlaying.value = true;
+        // 确保 AudioContext 在用户交互后恢复
+        getAnalyser();
+      }
     } catch (e: any) {
       playError.value = typeof e === "string" ? e : e.message || String(e);
       console.error("Failed to play:", e);
@@ -276,6 +292,11 @@ export const usePlayerStore = defineStore("player", () => {
 
   audio.addEventListener("loadedmetadata", () => {
     duration.value = audio.duration;
+    if (_pendingSeekTime.value > 0) {
+      audio.currentTime = _pendingSeekTime.value;
+      currentTime.value = _pendingSeekTime.value;
+      _pendingSeekTime.value = 0;
+    }
     console.log("[audio] loadedmetadata, duration:", audio.duration, "src:", audio.src);
   });
 
@@ -302,10 +323,32 @@ export const usePlayerStore = defineStore("player", () => {
     isPlaying.value = true;
   });
 
+  async function restoreLastState() {
+    const song = currentSong.value;
+    const savedTime = _savedCurrentTime.value;
+    if (!song) return;
+
+    // Clear saved time to prevent stale restore on next restart
+    _savedCurrentTime.value = 0;
+
+    const list = playlist.value.length > 0 ? playlist.value : undefined;
+    await playSong(song, list, false);
+
+    if (savedTime > 0) {
+      _pendingSeekTime.value = savedTime;
+    }
+  }
+
   function cleanup() {
     if (_seekTimer) {
       clearTimeout(_seekTimer);
       _seekTimer = null;
+    }
+    // Save current playback position for next session
+    _savedCurrentTime.value = audio.currentTime;
+    if (_timeSaveTimer) {
+      clearInterval(_timeSaveTimer);
+      _timeSaveTimer = null;
     }
     audio.pause();
     audio.removeAttribute("src");
@@ -320,6 +363,7 @@ export const usePlayerStore = defineStore("player", () => {
     audio,
     getAnalyser,
     cleanup,
+    restoreLastState,
     currentSong,
     playlist,
     currentIndex,
@@ -354,4 +398,8 @@ export const usePlayerStore = defineStore("player", () => {
     clearPlaylist,
     fetchLyrics,
   };
+}, {
+  persist: {
+    paths: ['currentSong', 'playlist', 'currentIndex', 'playMode', '_savedCurrentTime'],
+  },
 });

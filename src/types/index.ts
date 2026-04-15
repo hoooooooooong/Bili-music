@@ -98,3 +98,23 @@ export interface MediaResourcePage {
   total: number;
   hasMore: boolean;
 }
+
+export interface CommentMember {
+  name: string;
+  avatar: string;
+  level: number;
+}
+
+export interface Comment {
+  rpid: number;
+  message: string;
+  like: number;
+  rcount: number;
+  member: CommentMember;
+  ctime: number;
+}
+
+export interface CommentResponse {
+  comments: Comment[];
+  isEnd: boolean;
+}

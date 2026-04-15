@@ -103,3 +103,34 @@ pub async fn get_hot_ranking(
 ) -> AppResult<Vec<crate::core::searcher::SearchResult>> {
     searcher.get_hot_ranking().await
 }
+
+#[tauri::command]
+pub async fn get_video_comments(
+    bvid: String,
+    page: Option<u32>,
+    searcher: State<'_, BilibiliSearcher>,
+) -> AppResult<crate::core::searcher::CommentResponse> {
+    let page = page.unwrap_or(1);
+    if bvid.trim().is_empty() {
+        return Err(crate::error::AppError::InvalidParams(
+            "bvid 不能为空".into(),
+        ));
+    }
+    searcher.get_comments(&bvid, page).await
+}
+
+#[tauri::command]
+pub async fn get_comment_replies(
+    bvid: String,
+    root: i64,
+    page: Option<u32>,
+    searcher: State<'_, BilibiliSearcher>,
+) -> AppResult<crate::core::searcher::CommentResponse> {
+    let page = page.unwrap_or(1);
+    if bvid.trim().is_empty() {
+        return Err(crate::error::AppError::InvalidParams(
+            "bvid 不能为空".into(),
+        ));
+    }
+    searcher.get_replies(&bvid, root, page).await
+}

@@ -305,6 +305,8 @@ pub fn run() {
             commands::search::search_bilibili,
             commands::search::get_related,
             commands::search::get_hot_ranking,
+            commands::search::get_video_comments,
+            commands::search::get_comment_replies,
             commands::download::start_download,
             commands::download::get_download_progress,
             commands::download::get_downloaded_file_path,

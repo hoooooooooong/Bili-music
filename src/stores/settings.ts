@@ -26,6 +26,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const desktopLyricsEnabled = ref(false);
   const desktopLyricsFontSize = ref(32);
   const desktopLyricsLocked = ref(false);
+  const sessdata = ref("");
   const loaded = ref(false);
 
   async function loadSettings() {
@@ -43,6 +44,7 @@ export const useSettingsStore = defineStore("settings", () => {
       desktopLyricsEnabled.value = (settings as any).desktopLyricsEnabled ?? false;
       desktopLyricsFontSize.value = (settings as any).desktopLyricsFontSize ?? 32;
       desktopLyricsLocked.value = (settings as any).desktopLyricsLocked ?? false;
+      sessdata.value = (settings as any).sessdata ?? "";
       applyTheme(theme.value);
       loaded.value = true;
     } catch {
@@ -67,6 +69,7 @@ export const useSettingsStore = defineStore("settings", () => {
           desktopLyricsEnabled: desktopLyricsEnabled.value,
           desktopLyricsFontSize: desktopLyricsFontSize.value,
           desktopLyricsLocked: desktopLyricsLocked.value,
+          sessdata: sessdata.value,
         },
       });
     } catch (e) {
@@ -200,6 +203,7 @@ export const useSettingsStore = defineStore("settings", () => {
     desktopLyricsEnabled,
     desktopLyricsFontSize,
     desktopLyricsLocked,
+    sessdata,
     loaded,
     loadSettings,
     saveSettings,

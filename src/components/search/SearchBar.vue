@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { NIcon } from "naive-ui";
 import {
   SearchOutline,
@@ -7,25 +7,40 @@ import {
   TimeOutline,
   ArrowUpOutline,
   TrashOutline,
+  FlameOutline,
 } from "@vicons/ionicons5";
+import { invoke } from "@tauri-apps/api/core";
 import { useSearchStore } from "@/stores/search";
 import { useHistoryStore } from "@/stores/history";
+import type { Song } from "@/types";
 
 const searchStore = useSearchStore();
 const historyStore = useHistoryStore();
 
 const query = ref("");
-const showHistory = ref(false);
+const showDropdown = ref(false);
 const inputRef = ref<HTMLInputElement | null>(null);
+const hotSongs = ref<Song[]>([]);
 
 const recentSearches = computed(() => historyStore.searchHistory.slice(0, 10));
+const hotKeywords = computed(() =>
+  hotSongs.value.slice(0, 8).map((s) => s.title)
+);
+
+onMounted(async () => {
+  try {
+    hotSongs.value = await invoke<Song[]>("get_hot_ranking");
+  } catch {
+    hotSongs.value = [];
+  }
+});
 
 function doSearch(kw?: string) {
   const keyword = (kw || query.value).trim();
   if (!keyword) return;
   query.value = keyword;
   historyStore.addSearch(keyword);
-  showHistory.value = false;
+  showDropdown.value = false;
   searchStore.search(keyword);
 }
 
@@ -50,12 +65,12 @@ function removeHistoryItem(kw: string, e: MouseEvent) {
 }
 
 function onFocus() {
-  if (recentSearches.value.length > 0) showHistory.value = true;
+  showDropdown.value = true;
 }
 
 function onBlur() {
   setTimeout(() => {
-    showHistory.value = false;
+    showDropdown.value = false;
   }, 200);
 }
 
@@ -84,34 +99,51 @@ function handleKeydown(e: KeyboardEvent) {
     </div>
 
     <Transition name="dropdown">
-      <div
-        v-if="showHistory && recentSearches.length > 0"
-        class="search-dropdown"
-      >
-        <div class="dropdown-header">
-          <span class="dropdown-title">
-            <NIcon size="14"><TimeOutline /></NIcon>
-            搜索历史
-          </span>
-          <button class="clear-history-btn" @click="clearAllHistory">
-            <NIcon size="14"><ArrowUpOutline /></NIcon>
-            清空
-          </button>
+      <div v-if="showDropdown" class="search-dropdown">
+        <div v-if="hotKeywords.length > 0" class="hot-section">
+          <div class="dropdown-header">
+            <span class="dropdown-title">
+              <NIcon size="14" class="flame-icon"><FlameOutline /></NIcon>
+              热门搜索
+            </span>
+          </div>
+          <div class="hot-tags">
+            <button
+              v-for="kw in hotKeywords"
+              :key="kw"
+              class="hot-tag"
+              @mousedown.prevent="doSearch(kw)"
+            >{{ kw }}</button>
+          </div>
+          <div v-if="recentSearches.length > 0" class="dropdown-divider"></div>
         </div>
-        <div class="dropdown-list">
-          <button
-            v-for="kw in recentSearches"
-            :key="kw"
-            class="dropdown-item"
-            @mousedown.prevent="selectHistory(kw)"
-          >
-            <span class="dropdown-item-text">{{ kw }}</span>
-            <span
-              class="dropdown-item-del"
-              @mousedown.prevent="removeHistoryItem(kw, $event)"
-            ><NIcon size="14"><TrashOutline /></NIcon></span>
-          </button>
-        </div>
+
+        <template v-if="recentSearches.length > 0">
+          <div class="dropdown-header">
+            <span class="dropdown-title">
+              <NIcon size="14"><TimeOutline /></NIcon>
+              搜索历史
+            </span>
+            <button class="clear-history-btn" @click="clearAllHistory">
+              <NIcon size="14"><ArrowUpOutline /></NIcon>
+              清空
+            </button>
+          </div>
+          <div class="dropdown-list">
+            <button
+              v-for="kw in recentSearches"
+              :key="kw"
+              class="dropdown-item"
+              @mousedown.prevent="selectHistory(kw)"
+            >
+              <span class="dropdown-item-text">{{ kw }}</span>
+              <span
+                class="dropdown-item-del"
+                @mousedown.prevent="removeHistoryItem(kw, $event)"
+              ><NIcon size="14"><TrashOutline /></NIcon></span>
+            </button>
+          </div>
+        </template>
       </div>
     </Transition>
   </div>
@@ -177,7 +209,8 @@ function handleKeydown(e: KeyboardEvent) {
   border-radius: 10px;
   box-shadow: var(--shadow);
   z-index: 100;
-  overflow: hidden;
+  max-height: 360px;
+  overflow-y: auto;
 }
 
 .dropdown-header {
@@ -248,6 +281,43 @@ function handleKeydown(e: KeyboardEvent) {
 
 .dropdown-item:hover {
   background: var(--card-hover);
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 14px;
+}
+
+.flame-icon {
+  color: #fb7299;
+}
+
+.hot-section {
+  padding-bottom: 4px;
+}
+
+.hot-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 14px 8px;
+}
+
+.hot-tag {
+  padding: 3px 12px;
+  border-radius: 14px;
+  font-size: 12px;
+  color: var(--app-text);
+  background: var(--card-hover);
+  border: 1px solid var(--border-color);
+  transition: all 0.15s;
+}
+
+.hot-tag:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background: var(--accent-light);
 }
 
 .dropdown-enter-active,

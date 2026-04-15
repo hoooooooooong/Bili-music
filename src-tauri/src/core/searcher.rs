@@ -1,5 +1,5 @@
-use reqwest::cookie::Jar;
 use reqwest::Client;
+use std::collections::HashMap;
 use std::sync::Arc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -29,14 +29,41 @@ pub struct SearchResponse {
     pub page_size: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentMember {
+    pub name: String,
+    pub avatar: String,
+    pub level: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub rpid: i64,
+    pub message: String,
+    pub like: u64,
+    pub rcount: u64,
+    pub member: CommentMember,
+    pub ctime: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentResponse {
+    pub comments: Vec<Comment>,
+    pub is_end: bool,
+}
+
 #[derive(Clone)]
 pub struct BilibiliSearcher {
     client: Client,
+    aid_cache: Arc<std::sync::Mutex<HashMap<String, i64>>>,
 }
 
 impl BilibiliSearcher {
     pub fn new() -> Self {
-        let jar = Arc::new(Jar::default());
+        let jar = super::downloader::BILI_JAR.clone();
         let client = Client::builder()
             .cookie_provider(jar.clone())
             .default_headers(search_headers())
@@ -48,7 +75,10 @@ impl BilibiliSearcher {
             let _ = init_client.get("https://www.bilibili.com").send().await;
         });
 
-        Self { client }
+        Self {
+            client,
+            aid_cache: Arc::new(std::sync::Mutex::new(HashMap::new())),
+        }
     }
 
     pub async fn search(&self, keyword: &str, page: u32) -> AppResult<SearchResponse> {
@@ -227,6 +257,159 @@ impl BilibiliSearcher {
             .collect();
 
         Ok(results)
+    }
+
+    async fn get_aid(&self, bvid: &str) -> AppResult<i64> {
+        if let Some(&aid) = self.aid_cache.lock().unwrap().get(bvid) {
+            return Ok(aid);
+        }
+
+        let resp = self
+            .client
+            .get(BILIBILI_VIEW_URL)
+            .query(&[("bvid", bvid)])
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+        let data: serde_json::Value = resp.json().await?;
+        let aid = data
+            .get("data")
+            .and_then(|d| d.get("aid"))
+            .and_then(|a| a.as_i64())
+            .ok_or_else(|| AppError::Search("获取视频 aid 失败".into()))?;
+        self.aid_cache.lock().unwrap().insert(bvid.to_string(), aid);
+        Ok(aid)
+    }
+
+    pub async fn get_comments(&self, bvid: &str, page: u32) -> AppResult<CommentResponse> {
+        let aid = self.get_aid(bvid).await?;
+
+        let params = [
+            ("type", "1"),
+            ("oid", &aid.to_string()),
+            ("pn", &page.to_string()),
+            ("ps", "20"),
+            ("sort", "1"),
+        ];
+
+        let resp = self
+            .client
+            .get(BILIBILI_COMMENT_URL)
+            .query(&params)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+
+        let data: serde_json::Value = resp.json().await?;
+
+        if data.get("code").and_then(|c| c.as_i64()) != Some(0) {
+            let msg = data
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("获取评论失败");
+            return Err(AppError::Search(msg.into()));
+        }
+
+        let replies = data
+            .get("data")
+            .and_then(|d| d.get("replies"))
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        // cursor.is_end may be missing (empty cursor {}), fall back to count check
+        let is_end = data
+            .get("data")
+            .and_then(|d| d.get("cursor"))
+            .and_then(|c| c.get("is_end"))
+            .and_then(|e| e.as_bool())
+            .unwrap_or_else(|| replies.len() < 20);
+
+        let comments: Vec<Comment> = replies.iter().map(|r| Self::parse_comment(r)).collect();
+
+        Ok(CommentResponse { comments, is_end })
+    }
+
+    pub async fn get_replies(&self, bvid: &str, root: i64, page: u32) -> AppResult<CommentResponse> {
+        let aid = self.get_aid(bvid).await?;
+
+        let params = [
+            ("type", "1"),
+            ("oid", &aid.to_string()),
+            ("root", &root.to_string()),
+            ("pn", &page.to_string()),
+            ("ps", "10"),
+            ("sort", "1"),
+        ];
+
+        let resp = self
+            .client
+            .get(BILIBILI_REPLY_URL)
+            .query(&params)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+
+        let data: serde_json::Value = resp.json().await?;
+
+        if data.get("code").and_then(|c| c.as_i64()) != Some(0) {
+            let msg = data
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("获取回复失败");
+            return Err(AppError::Search(msg.into()));
+        }
+
+        let replies = data
+            .get("data")
+            .and_then(|d| d.get("replies"))
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let is_end = data
+            .get("data")
+            .and_then(|d| d.get("cursor"))
+            .and_then(|c| c.get("is_end"))
+            .and_then(|e| e.as_bool())
+            .unwrap_or_else(|| replies.len() < 10);
+
+        let comments: Vec<Comment> = replies.iter().map(|r| Self::parse_comment(r)).collect();
+
+        Ok(CommentResponse { comments, is_end })
+    }
+
+    fn parse_comment(item: &serde_json::Value) -> Comment {
+        let member = item.get("member").unwrap_or(&serde_json::Value::Null);
+        let name = member
+            .get("uname")
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .to_string();
+        let avatar = member
+            .get("avatar")
+            .and_then(|a| a.as_str())
+            .unwrap_or("")
+            .to_string();
+        let level = member
+            .get("level_info")
+            .and_then(|l| l.get("current_level"))
+            .and_then(|l| l.as_u64())
+            .unwrap_or(0) as u32;
+
+        Comment {
+            rpid: item.get("rpid").and_then(|r| r.as_i64()).unwrap_or(0),
+            message: item
+                .get("content")
+                .and_then(|c| c.get("message").or_else(|| c.get("msg")))
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .to_string(),
+            like: item.get("like").and_then(|l| l.as_u64()).unwrap_or(0),
+            rcount: item.get("rcount").and_then(|r| r.as_u64()).unwrap_or(0),
+            member: CommentMember { name, avatar, level },
+            ctime: item.get("ctime").and_then(|t| t.as_i64()).unwrap_or(0),
+        }
     }
 
     fn parse_view_item(item: &serde_json::Value, _re_tag: &Regex) -> SearchResult {

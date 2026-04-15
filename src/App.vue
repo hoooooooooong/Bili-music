@@ -75,6 +75,9 @@ let _unlisteners: Array<() => void> = [];
 onMounted(async () => {
   await settingsStore.loadSettings();
 
+  // Restore last playback state (song info + progress, no auto-play)
+  await playerStore.restoreLastState();
+
   // Start window geometry tracking (main window only)
   if (windowLabel === "main") {
     const { startTracking } = useWindowGeometry();

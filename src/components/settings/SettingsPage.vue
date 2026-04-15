@@ -8,6 +8,7 @@ import {
   NSwitch,
   useMessage,
 } from "naive-ui";
+import { EyeOutline, EyeOffOutline } from "@vicons/ionicons5";
 import {
   ArrowBackOutline,
   FolderOpenOutline,
@@ -29,6 +30,15 @@ const historyStore = useHistoryStore();
 const message = useMessage();
 
 const ffmpegOk = ref(false);
+const showSessdata = ref(false);
+
+async function setSessdata(val: string) {
+  settingsStore.sessdata = val;
+  await settingsStore.saveSettings();
+  if (val) {
+    message.success("SESSDATA 已保存，评论等功能将使用登录状态");
+  }
+}
 
 // 数据统计
 const totalPlays = computed(
@@ -271,6 +281,31 @@ onMounted(() => {
             :value="settingsStore.autostartEnabled"
             @update:value="setAutostartEnabled"
           />
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="section-title">账号</h3>
+        <div class="setting-item column">
+          <div class="slider-header">
+            <span class="setting-label">B站 SESSDATA</span>
+            <button class="sessdata-toggle" @click="showSessdata = !showSessdata">
+              <NIcon size="14">
+                <EyeOffOutline v-if="!showSessdata" />
+                <EyeOutline v-else />
+              </NIcon>
+            </button>
+          </div>
+          <NInput
+            :type="showSessdata ? 'text' : 'password'"
+            :value="settingsStore.sessdata"
+            placeholder="粘贴你的 SESSDATA Cookie"
+            size="small"
+            @update:value="setSessdata"
+          />
+          <p class="sessdata-hint">
+            用于获取完整评论列表等功能。可在浏览器登录 B站后，从 Cookie 中复制 SESSDATA 的值。留空则使用未登录状态。
+          </p>
         </div>
       </div>
 
@@ -708,5 +743,30 @@ onMounted(() => {
   cursor: pointer;
   width: 100%;
   height: 100%;
+}
+
+.sessdata-toggle {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.sessdata-toggle:hover {
+  background: var(--card-hover);
+  color: var(--text-secondary);
+}
+
+.sessdata-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 8px;
+  line-height: 1.6;
 }
 </style>

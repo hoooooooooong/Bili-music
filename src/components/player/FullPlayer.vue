@@ -19,6 +19,7 @@ import {
   ListOutline,
   CloseOutline,
   TrashOutline,
+  ChatbubblesOutline,
 } from "@vicons/ionicons5";
 import { usePlayerStore } from "@/stores/player";
 import { useFavoritesStore } from "@/stores/favorites";
@@ -31,6 +32,7 @@ import type { Song } from "@/types";
 import SpinningDisc from "./SpinningDisc.vue";
 import ScrollingLyrics from "./ScrollingLyrics.vue";
 import AudioVisualizer from "./AudioVisualizer.vue";
+import CommentPanel from "./CommentPanel.vue";
 
 const emit = defineEmits<{ close: [] }>();
 const player = usePlayerStore();
@@ -79,6 +81,7 @@ const bgStyle = computed(() => {
 });
 
 const showPlaylist = ref(false);
+const showComments = ref(false);
 const fpListRef = ref<HTMLElement | null>(null);
 
 const { dragIndex: fpDragIndex, getItemStyle: fpGetItemStyle, onMouseDown: fpOnMouseDown, isDragging: fpIsDragging } = useDragSort({
@@ -94,6 +97,14 @@ function fpPlaySong(song: Song, index: number) {
   player.currentIndex = index;
   player.playSong(song);
 }
+
+watch(showPlaylist, (v) => {
+  if (v) showComments.value = false;
+});
+
+watch(showComments, (v) => {
+  if (v) showPlaylist.value = false;
+});
 
 watch(() => player.currentIndex, async (idx) => {
   if (idx < 0 || !fpListRef.value || !showPlaylist.value) return;
@@ -198,6 +209,10 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
             </div>
           </div>
         </div>
+      </Transition>
+
+      <Transition name="fp-playlist-slide">
+        <CommentPanel v-if="showComments" @close="showComments = false" />
       </Transition>
       </div>
 
@@ -320,6 +335,11 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
           <button class="fp-ctrl" @click="showPlaylist = !showPlaylist" title="播放列表">
             <NIcon size="20" :color="showPlaylist ? 'var(--accent-color)' : ''">
               <ListOutline />
+            </NIcon>
+          </button>
+          <button class="fp-ctrl" @click="showComments = !showComments" title="评论">
+            <NIcon size="20" :color="showComments ? 'var(--accent-color)' : ''">
+              <ChatbubblesOutline />
             </NIcon>
           </button>
         </div>

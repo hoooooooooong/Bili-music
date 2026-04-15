@@ -39,7 +39,7 @@ impl AudioUrlCache {
 static AUDIO_URL_CACHE: LazyLock<AudioUrlCache> = LazyLock::new(AudioUrlCache::new);
 
 /// Shared cookie jar for Bilibili API.
-static BILI_JAR: LazyLock<Arc<reqwest::cookie::Jar>> =
+pub static BILI_JAR: LazyLock<Arc<reqwest::cookie::Jar>> =
     LazyLock::new(|| Arc::new(reqwest::cookie::Jar::default()));
 
 /// Shared HTTP client with cookies for Bilibili API.

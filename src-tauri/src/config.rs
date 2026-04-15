@@ -4,6 +4,8 @@ pub const BILIBILI_VIEW_URL: &str = "https://api.bilibili.com/x/web-interface/vi
 pub const BILIBILI_PLAY_URL: &str = "https://api.bilibili.com/x/player/playurl";
 pub const BILIBILI_VIDEO_URL: &str = "https://www.bilibili.com/video/";
 pub const BILIBILI_RANKING_URL: &str = "https://api.bilibili.com/x/web-interface/ranking/v2";
+pub const BILIBILI_COMMENT_URL: &str = "https://api.bilibili.com/x/v2/reply";
+pub const BILIBILI_REPLY_URL: &str = "https://api.bilibili.com/x/v2/reply/reply";
 pub const BILIBILI_MEDIALIST_URL: &str = "https://api.bilibili.com/x/v2/fav/folder";
 pub const BILIBILI_MEDIALIST_RESOURCE_URL: &str = "https://api.bilibili.com/x/v3/fav/resource/list";
 

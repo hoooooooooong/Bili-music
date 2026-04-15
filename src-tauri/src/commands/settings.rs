@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use crate::core::converter::AudioConverter;
 use crate::core::ffmpeg_path::FfmpegPath;
+use crate::core::downloader::BILI_JAR;
 use crate::config::get_default_output_dir;
 use crate::error::AppResult;
 
@@ -49,6 +50,8 @@ pub struct AppSettings {
     pub desktop_lyrics_font_size: u32,
     #[serde(default)]
     pub desktop_lyrics_locked: bool,
+    #[serde(default)]
+    pub sessdata: String,
 }
 
 fn default_accent_color() -> String { "#fb7299".into() }
@@ -73,6 +76,7 @@ impl Default for AppSettings {
             desktop_lyrics_enabled: false,
             desktop_lyrics_font_size: default_lyrics_font_size(),
             desktop_lyrics_locked: false,
+            sessdata: String::new(),
         }
     }
 }
@@ -88,13 +92,17 @@ fn settings_file(app_handle: &AppHandle) -> std::path::PathBuf {
 #[tauri::command]
 pub async fn get_settings(app_handle: AppHandle) -> AppResult<AppSettings> {
     let path = settings_file(&app_handle);
-    if path.exists() {
+    let settings = if path.exists() {
         let content = tokio::fs::read_to_string(&path).await?;
-        let settings: AppSettings = serde_json::from_str(&content)?;
-        Ok(settings)
+        serde_json::from_str(&content)?
     } else {
-        Ok(AppSettings::default())
-    }
+        AppSettings::default()
+    };
+
+    // Inject SESSDATA into cookie jar on startup
+    inject_sessdata(&settings.sessdata);
+
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -105,7 +113,23 @@ pub async fn save_settings(app_handle: AppHandle, settings: AppSettings) -> AppR
     }
     let content = serde_json::to_string_pretty(&settings)?;
     tokio::fs::write(&path, content).await?;
+
+    // Inject SESSDATA into the shared cookie jar
+    inject_sessdata(&settings.sessdata);
+
     Ok(())
+}
+
+fn inject_sessdata(sessdata: &str) {
+    let url = url::Url::parse("https://bilibili.com").unwrap();
+    if sessdata.is_empty() {
+        BILI_JAR.add_cookie_str("SESSDATA=; Max-Age=0; Domain=bilibili.com", &url);
+    } else {
+        BILI_JAR.add_cookie_str(
+            &format!("SESSDATA={}; Domain=bilibili.com", sessdata),
+            &url,
+        );
+    }
 }
 
 #[tauri::command]
