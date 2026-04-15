@@ -6,11 +6,13 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeFile } from "@tauri-apps/plugin-fs";
 import PlaylistGrid from "./PlaylistGrid.vue";
 import PlaylistSongList from "./PlaylistSongList.vue";
+import BiliFolderView from "./BiliFolderView.vue";
 import FavoriteList from "../favorites/FavoriteList.vue";
 import ImportFavoritesDialog from "./ImportFavoritesDialog.vue";
 import { usePlaylistStore } from "@/stores/playlists";
 import { useFavoritesStore } from "@/stores/favorites";
 import { useDownloadStore } from "@/stores/download";
+import type { FavoritesFolder } from "@/types";
 
 const playlistStore = usePlaylistStore();
 const favoritesStore = useFavoritesStore();
@@ -21,10 +23,12 @@ type View =
   | { kind: "grid" }
   | { kind: "favorites" }
   | { kind: "playlist"; id: string }
-  | { kind: "smart"; type: "mostPlayed" | "recentlyPlayed" };
+  | { kind: "smart"; type: "mostPlayed" | "recentlyPlayed" }
+  | { kind: "biliFolder"; folderId: number; folderTitle: string; uid: string };
 
 const currentView = ref<View>({ kind: "grid" });
 const showImportFavorites = ref(false);
+const playlistGridRef = ref<InstanceType<typeof PlaylistGrid> | null>(null);
 
 const selectedPlaylist = computed(() => {
   if (currentView.value.kind !== "playlist") return null;
@@ -52,6 +56,15 @@ function selectSmartPlaylist(id: string) {
   } else if (id === "__smart_recently_played__") {
     currentView.value = { kind: "smart", type: "recentlyPlayed" };
   }
+}
+
+function selectBiliFolder(folder: FavoritesFolder, uid: string) {
+  currentView.value = {
+    kind: "biliFolder",
+    folderId: folder.id,
+    folderTitle: folder.title,
+    uid,
+  };
 }
 
 function createPlaylist() {
@@ -149,9 +162,11 @@ function downloadAllFavorites() {
 
     <PlaylistGrid
       v-else-if="currentView.kind === 'grid'"
+      ref="playlistGridRef"
       @select-favorites="selectFavorites"
       @select-playlist="selectPlaylist"
       @select-smart-playlist="selectSmartPlaylist"
+      @select-bili-folder="selectBiliFolder"
       @create="createPlaylist"
       @import="importPlaylists"
       @import-favorites="showImportFavorites = true"
@@ -170,6 +185,15 @@ function downloadAllFavorites() {
       :key="selectedSmartPlaylist.id"
       :playlist="selectedSmartPlaylist"
       :readonly="true"
+      @back="currentView = { kind: 'grid' }"
+    />
+
+    <BiliFolderView
+      v-else-if="currentView.kind === 'biliFolder'"
+      :key="'bili-' + currentView.folderId"
+      :folder-id="currentView.folderId"
+      :folder-title="currentView.folderTitle"
+      :uid="currentView.uid"
       @back="currentView = { kind: 'grid' }"
     />
 

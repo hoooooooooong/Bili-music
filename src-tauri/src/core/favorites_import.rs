@@ -31,6 +31,7 @@ pub struct MediaResourcePage {
 
 pub async fn fetch_medialist(uid: &str) -> AppResult<FavoritesFolderListResponse> {
     let client = reqwest::Client::builder()
+        .cookie_provider(super::downloader::BILI_JAR.clone())
         .default_headers(search_headers())
         .build()?;
 
@@ -123,6 +124,7 @@ pub async fn fetch_medialist_resources(
 ) -> AppResult<MediaResourcePage> {
     let page_size: u32 = 20;
     let client = reqwest::Client::builder()
+        .cookie_provider(super::downloader::BILI_JAR.clone())
         .default_headers(search_headers())
         .build()?;
 
