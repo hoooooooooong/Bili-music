@@ -53,6 +53,26 @@ function ensureWatcher() {
     sharedCurrentLineIndex.value = -1;
     sharedLastTime = -1;
   });
+
+  // 歌词数据变化时重新计算当前行（歌词加载完成/导入/清除时触发）
+  watch(
+    () => player.lyrics,
+    () => {
+      sharedLastTime = -1;
+      const lyrics = player.lyrics?.lyrics || [];
+      if (lyrics.length > 0) {
+        const offset = player.currentSong
+          ? lyricOffsets.getOffset(player.currentSong.bvid)
+          : 0;
+        const idx = findCurrentLine(lyrics, player.currentTime - offset);
+        if (idx !== sharedCurrentLineIndex.value) {
+          sharedCurrentLineIndex.value = idx;
+        }
+      } else {
+        sharedCurrentLineIndex.value = -1;
+      }
+    }
+  );
 }
 
 export function useLyrics() {

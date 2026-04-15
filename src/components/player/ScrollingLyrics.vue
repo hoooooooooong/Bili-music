@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from "vue";
+import { ref, watch, nextTick, onMounted } from "vue";
 import type { LyricLine } from "@/types";
 
 const props = defineProps<{
@@ -16,29 +16,39 @@ const container = ref<HTMLElement | null>(null);
 const userScrolling = ref(false);
 let scrollTimer: ReturnType<typeof setTimeout> | null = null;
 
+function scrollToIndex(idx: number) {
+  if (userScrolling.value || !container.value) return;
+  if (idx < 0) return;
+
+  const activeLine = container.value.children[idx] as
+    | HTMLElement
+    | undefined;
+  if (!activeLine) return;
+
+  const containerRect = container.value.getBoundingClientRect();
+  const lineRect = activeLine.getBoundingClientRect();
+  const offset =
+    lineRect.top -
+    containerRect.top -
+    containerRect.height / 2 +
+    lineRect.height / 2;
+
+  container.value.scrollBy({ top: offset, behavior: "smooth" });
+}
+
 watch(
   () => props.currentIndex,
   async (idx) => {
-    if (userScrolling.value || !container.value) return;
-    if (idx < 0) return;
-
     await nextTick();
-    const activeLine = container.value.children[idx] as
-      | HTMLElement
-      | undefined;
-    if (!activeLine) return;
-
-    const containerRect = container.value.getBoundingClientRect();
-    const lineRect = activeLine.getBoundingClientRect();
-    const offset =
-      lineRect.top -
-      containerRect.top -
-      containerRect.height / 2 +
-      lineRect.height / 2;
-
-    container.value.scrollBy({ top: offset, behavior: "smooth" });
+    scrollToIndex(idx);
   }
 );
+
+// 挂载时滚动到当前行（watch 不会对初始值触发）
+onMounted(async () => {
+  await nextTick();
+  scrollToIndex(props.currentIndex);
+});
 
 function onScroll() {
   userScrolling.value = true;
