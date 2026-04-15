@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import type { Song, PlayMode, LyricsData, VisualizerStyle } from "@/types";
+import type { Song, PlayMode, LyricsData, LyricLine, VisualizerStyle } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { emit } from "@/utils/emitter";
@@ -52,6 +52,8 @@ export const usePlayerStore = defineStore("player", () => {
   const volume = ref(1);
   const lyrics = ref<LyricsData | null>(null);
   const loadingLyrics = ref(false);
+  // 用户手动导入的自定义歌词，key 为 bvid，value 为原始 LRC 文本
+  const customLyrics = ref<Record<string, string>>({});
   const audioUrl = ref("");
   const coverUrl = ref("");
   const buffering = ref(false);
@@ -60,6 +62,10 @@ export const usePlayerStore = defineStore("player", () => {
   const sleepTimerTotal = ref(0);
   const visualizerStyle = ref<VisualizerStyle>("bars");
   let _sleepTimerInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Preload state
+  const preloadedBvid = ref<string | null>(null);
+  const isPreloading = ref(false);
 
   // Persistence: throttled time save (every 3s) + pending seek for restore
   const _savedCurrentTime = ref(0);
@@ -80,6 +86,33 @@ export const usePlayerStore = defineStore("player", () => {
   function setVolume(val: number) {
     volume.value = Math.max(0, Math.min(1, val));
     audio.volume = volume.value;
+  }
+
+  function getNextSong(): Song | null {
+    const list = playlist.value;
+    if (list.length === 0) return null;
+    if (playMode.value === "loop") return list[currentIndex.value] ?? null;
+    if (playMode.value === "random") return list[Math.floor(Math.random() * list.length)] ?? null;
+    const nextIdx = (currentIndex.value + 1) % list.length;
+    return list[nextIdx] ?? null;
+  }
+
+  async function preloadNextSong() {
+    const next = getNextSong();
+    if (!next || next.bvid === currentSong.value?.bvid) return;
+    if (preloadedBvid.value === next.bvid) return;
+
+    isPreloading.value = true;
+    try {
+      await invoke<string>("stream_audio", { bvid: next.bvid });
+      preloadedBvid.value = next.bvid;
+      console.log("[player] preloaded:", next.bvid);
+    } catch (e) {
+      // Silent fail — will retry when user actually navigates to this song
+      console.warn("[player] preload failed:", next.bvid, e);
+    } finally {
+      isPreloading.value = false;
+    }
   }
 
   async function playSong(song: Song, list?: Song[], autoPlay: boolean = true, seekTime: number = 0) {
@@ -128,6 +161,9 @@ export const usePlayerStore = defineStore("player", () => {
     }
 
     fetchLyrics(song.bvid);
+
+    // Preload next song in the background
+    preloadNextSong();
   }
 
   function togglePlay() {
@@ -235,11 +271,15 @@ export const usePlayerStore = defineStore("player", () => {
     const modes: PlayMode[] = ["sequential", "loop", "random"];
     const idx = modes.indexOf(playMode.value);
     playMode.value = modes[(idx + 1) % modes.length];
+    preloadedBvid.value = null;
+    if (isPlaying.value) preloadNextSong();
   }
 
   function addToPlaylist(song: Song) {
     if (!playlist.value.some((s) => s.bvid === song.bvid)) {
       playlist.value.push(song);
+      preloadedBvid.value = null;
+      if (isPlaying.value) preloadNextSong();
     }
   }
 
@@ -256,10 +296,13 @@ export const usePlayerStore = defineStore("player", () => {
     } else if (fromIndex > currentIndex.value && toIndex <= currentIndex.value) {
       currentIndex.value++;
     }
+    preloadedBvid.value = null;
+    if (isPlaying.value) preloadNextSong();
   }
 
   function removeFromPlaylist(index: number) {
     playlist.value.splice(index, 1);
+    preloadedBvid.value = null;
     if (index < currentIndex.value) {
       currentIndex.value--;
     } else if (index === currentIndex.value) {
@@ -276,6 +319,8 @@ export const usePlayerStore = defineStore("player", () => {
         );
         playSong(playlist.value[currentIndex.value]);
       }
+    } else if (isPlaying.value) {
+      preloadNextSong();
     }
   }
 
@@ -286,9 +331,16 @@ export const usePlayerStore = defineStore("player", () => {
     audio.pause();
     audio.src = "";
     isPlaying.value = false;
+    preloadedBvid.value = null;
   }
 
   async function fetchLyrics(bvid: string) {
+    // 如果有用户导入的自定义歌词，优先使用
+    const savedLrc = customLyrics.value[bvid];
+    if (savedLrc) {
+      lyrics.value = parseLrcText(savedLrc);
+      return;
+    }
     loadingLyrics.value = true;
     try {
       lyrics.value = await invoke<LyricsData>("fetch_lyrics", { bvid });
@@ -297,6 +349,44 @@ export const usePlayerStore = defineStore("player", () => {
     } finally {
       loadingLyrics.value = false;
     }
+  }
+
+  /** 解析 LRC 文本为 LyricsData（支持 [秒数] 和 [mm:ss.xx] 两种格式） */
+  function parseLrcText(lrcText: string): LyricsData {
+    const lines = lrcText.trim().split("\n");
+    const parsed: LyricLine[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      // [mm:ss.xx] 格式
+      const mmss = trimmed.match(/^\[(\d+):(\d+\.?\d*)\](.+)/);
+      if (mmss) {
+        const time = parseInt(mmss[1]) * 60 + parseFloat(mmss[2]);
+        const text = mmss[3].trim();
+        if (text) parsed.push({ time, text });
+        continue;
+      }
+      // [秒数] 格式
+      const sec = trimmed.match(/^\[(\d+\.?\d*)\](.+)/);
+      if (sec) {
+        const time = parseFloat(sec[1]);
+        const text = sec[2].trim();
+        if (text) parsed.push({ time, text });
+      }
+    }
+    parsed.sort((a, b) => a.time - b.time);
+    return { lyrics: parsed };
+  }
+
+  /** 导入自定义歌词文本并保存 */
+  function importCustomLyrics(bvid: string, lrcText: string) {
+    if (!lrcText.trim()) return;
+    customLyrics.value[bvid] = lrcText.trim();
+    lyrics.value = parseLrcText(lrcText);
+  }
+
+  /** 删除某首歌的自定义歌词 */
+  function removeCustomLyrics(bvid: string) {
+    delete customLyrics.value[bvid];
   }
 
   audio.addEventListener("timeupdate", () => {
@@ -368,6 +458,7 @@ export const usePlayerStore = defineStore("player", () => {
       audioUrl.value = "";
     }
     cleanupAudioContext();
+    preloadedBvid.value = null;
   }
 
   return {
@@ -386,6 +477,7 @@ export const usePlayerStore = defineStore("player", () => {
     progress,
     lyrics,
     loadingLyrics,
+    customLyrics,
     audioUrl,
     coverUrl,
     buffering,
@@ -393,6 +485,8 @@ export const usePlayerStore = defineStore("player", () => {
     sleepTimerRemaining,
     sleepTimerTotal,
     visualizerStyle,
+    preloadedBvid,
+    isPreloading,
     setVisualizerStyle,
     setVolume,
     playSong,
@@ -410,9 +504,11 @@ export const usePlayerStore = defineStore("player", () => {
     removeFromPlaylist,
     clearPlaylist,
     fetchLyrics,
+    importCustomLyrics,
+    removeCustomLyrics,
   };
 }, {
   persist: {
-    pick: ['currentSong', 'playlist', 'currentIndex', 'playMode', '_savedCurrentTime', '_wasPlayingBeforeClose', 'visualizerStyle'],
+    pick: ['currentSong', 'playlist', 'currentIndex', 'playMode', '_savedCurrentTime', '_wasPlayingBeforeClose', 'visualizerStyle', 'customLyrics'],
   } as any,
 });

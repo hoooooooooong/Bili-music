@@ -3,6 +3,58 @@ use crate::core::searcher::BilibiliSearcher;
 use crate::core::lyrics_client::{LyricsClient, fetch_subtitle};
 use crate::error::{AppError, AppResult};
 
+/// 清洗B站视频标题，用于提高歌词搜索匹配率
+fn clean_title_for_search(title: &str) -> String {
+    let mut s = title.to_string();
+
+    // 1. 去除 【...】和 [...]
+    let bracket_re = regex::Regex::new(r"【.*?】|\[.*?\]").unwrap();
+    s = bracket_re.replace_all(&s, "").to_string();
+
+    // 2. 去除包含 cover/翻唱/remix/伴奏/mv/remastered/live/acoustic 的圆括号段
+    let paren_re = regex::Regex::new(
+        r"\((?i:cover|翻唱|remix|伴奏|mv|remastered|live|acoustic)[^)]*\)",
+    )
+    .unwrap();
+    s = paren_re.replace_all(&s, "").to_string();
+
+    // 3. 去除 `|` 分隔符及之后的内容
+    if let Some(pos) = s.find('|') {
+        s.truncate(pos);
+    }
+
+    // 4. 去除常见后缀关键词（仅作为独立词匹配）
+    let suffixes = [
+        r"(?i)\bMV\b",
+        r"(?i)\bPV\b",
+        r"(?i)\bOfficial Video\b",
+        r"(?i)\bOfficial\b",
+        r"(?i)\bLyric Video\b",
+        r"(?i)\bLyrics\b",
+        r"(?i)\bAudio\b",
+        r"歌ってみた",
+        r"(?i)\boff vocal\b",
+        r"(?i)\binst\b",
+        r"(?i)\binstrumental\b",
+    ];
+    for pat in &suffixes {
+        let re = regex::Regex::new(pat).unwrap();
+        s = re.replace_all(&s, "").to_string();
+    }
+
+    // 5. 去除 cover/翻唱/remix 等作为独立词
+    let cover_re = regex::Regex::new(
+        r"(?i)\b(翻唱版?|cover|remix)\b",
+    )
+    .unwrap();
+    s = cover_re.replace_all(&s, "").to_string();
+
+    // 6. 合并多余空格并 trim
+    s = regex::Regex::new(r"\s+").unwrap().replace_all(&s.trim(), " ").to_string();
+
+    s
+}
+
 #[tauri::command]
 pub async fn fetch_lyrics(
     bvid: String,
@@ -18,7 +70,8 @@ pub async fn fetch_lyrics(
 
     let song_info = searcher.get_view_info(&bvid).await?;
 
-    let keyword = format!("{} {}", song_info.title, song_info.author);
+    let clean_title = clean_title_for_search(&song_info.title);
+    let keyword = format!("{} {}", clean_title, song_info.author);
 
     // Parallel fetch: NetEase LRC + B站 subtitle
     let lrc_future = lyrics_client.fetch_lyrics(&keyword);

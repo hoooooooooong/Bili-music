@@ -32,6 +32,7 @@ import { useLyrics } from "@/composables/useLyrics";
 import { useDragSort } from "@/composables/useDragSort";
 import { formatDuration } from "@/utils/formatters";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-shell";
 import type { Song, Danmaku } from "@/types";
 import SpinningDisc from "./SpinningDisc.vue";
 import ScrollingLyrics from "./ScrollingLyrics.vue";
@@ -53,6 +54,30 @@ const {
 } = useLyrics();
 
 const lyricOffsets = useLyricOffsetsStore();
+
+const showImportLyrics = ref(false);
+const importLrcText = ref("");
+
+function onSearchOnline() {
+  open("http://www.gecidq.com");
+}
+
+function openImportLyrics() {
+  importLrcText.value = "";
+  showImportLyrics.value = true;
+}
+
+function confirmImportLyrics() {
+  if (!player.currentSong) return;
+  player.importCustomLyrics(player.currentSong.bvid, importLrcText.value);
+  showImportLyrics.value = false;
+}
+
+function clearCustomLyrics() {
+  if (!player.currentSong) return;
+  player.removeCustomLyrics(player.currentSong.bvid);
+  player.fetchLyrics(player.currentSong.bvid);
+}
 
 function adjustOffset(delta: number) {
   if (!player.currentSong) return;
@@ -260,6 +285,11 @@ onUnmounted(() => {
             @scroll="onUserScroll"
             @seek="seekToLine"
           />
+          <div v-if="player.currentSong" class="lyrics-actions">
+            <span class="search-online-hint" @click="onSearchOnline">歌词不对，网上搜索？</span>
+            <span v-if="player.customLyrics[player.currentSong.bvid]" class="imported-tag" @click="clearCustomLyrics">已导入 (点击恢复)</span>
+            <span v-else class="import-lyrics-btn" @click="openImportLyrics">导入歌词</span>
+          </div>
         </div>
 
         <Transition name="fp-playlist-slide">
@@ -474,6 +504,28 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- 导入歌词弹窗 -->
+    <Transition name="import-modal-fade">
+      <div v-if="showImportLyrics" class="import-lyrics-overlay" @click.self="showImportLyrics = false">
+        <div class="import-lyrics-dialog">
+          <div class="import-lyrics-header">
+            <span>导入歌词</span>
+            <button class="import-lyrics-close" @click="showImportLyrics = false"><NIcon size="18"><CloseOutline /></NIcon></button>
+          </div>
+          <textarea
+            v-model="importLrcText"
+            class="import-lyrics-textarea"
+            placeholder="粘贴 LRC 歌词内容，例如：&#10;[0.0]歌词第一行&#10;[5.9]歌词第二行&#10;[10.82]歌词第三行"
+            rows="12"
+          ></textarea>
+          <div class="import-lyrics-footer">
+            <button class="import-lyrics-cancel" @click="showImportLyrics = false">取消</button>
+            <button class="import-lyrics-confirm" @click="confirmImportLyrics" :disabled="!importLrcText.trim()">确认导入</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -594,6 +646,15 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fp-right :deep(.scrolling-lyrics) {
+  flex: 1;
+  min-height: 0;
+  height: auto;
 }
 
 .fp-offset-row {
@@ -1048,6 +1109,163 @@ onUnmounted(() => {
 .fp-playlist-slide-enter-from,
 .fp-playlist-slide-leave-to {
   transform: translateX(40px);
+  opacity: 0;
+}
+
+.lyrics-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px;
+  flex-shrink: 0;
+}
+
+.search-online-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.search-online-hint:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.import-lyrics-btn {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.import-lyrics-btn:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.imported-tag {
+  font-size: 12px;
+  color: rgba(103, 194, 58, 0.7);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.imported-tag:hover {
+  color: rgba(103, 194, 58, 1);
+}
+
+/* 导入歌词弹窗 */
+.import-lyrics-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.import-lyrics-dialog {
+  width: 480px;
+  max-height: 80vh;
+  background: var(--color-background, #1e1e2e);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.import-lyrics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text, #eee);
+}
+
+.import-lyrics-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.import-lyrics-close:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.import-lyrics-textarea {
+  flex: 1;
+  min-height: 240px;
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  color: var(--color-text, #eee);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+}
+
+.import-lyrics-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.import-lyrics-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.import-lyrics-cancel,
+.import-lyrics-confirm {
+  padding: 6px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.2s;
+}
+
+.import-lyrics-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text, #eee);
+}
+
+.import-lyrics-cancel:hover {
+  opacity: 0.8;
+}
+
+.import-lyrics-confirm {
+  background: var(--color-primary, #63e2b7);
+  color: #1e1e2e;
+  font-weight: 500;
+}
+
+.import-lyrics-confirm:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.import-lyrics-confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.import-modal-fade-enter-active,
+.import-modal-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.import-modal-fade-enter-from,
+.import-modal-fade-leave-to {
   opacity: 0;
 }
 </style>
