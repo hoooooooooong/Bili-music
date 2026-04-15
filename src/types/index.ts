@@ -7,7 +7,11 @@ export interface Song {
   playCountText: string;
   coverUrl: string;
   description?: string;
+  pubdate?: number;
 }
+
+export type SearchOrder = "totalrank" | "pubdate" | "click" | "stow" | "dm";
+export type DurationFilter = "all" | "short" | "medium" | "long" | "very-long";
 
 export interface SearchResponse {
   results: Song[];

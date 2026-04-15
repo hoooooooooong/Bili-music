@@ -23,3 +23,24 @@ export function parseDuration(duration: string): number {
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   return 0;
 }
+
+export function formatPubDate(timestamp: number): string {
+  if (!timestamp) return "";
+  const now = new Date();
+  const date = new Date(timestamp * 1000);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.floor((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "今天";
+  if (diffDays === 1) return "昨天";
+  if (diffDays < 30) return `${diffDays}天前`;
+
+  const diffMonths = (now.getFullYear() - date.getFullYear()) * 12 + now.getMonth() - date.getMonth();
+  if (diffMonths < 12) return `${diffMonths}个月前`;
+
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}

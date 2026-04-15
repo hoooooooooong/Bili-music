@@ -7,6 +7,7 @@ import {
   CloseOutline,
 } from "@vicons/ionicons5";
 import SongCard from "./SongCard.vue";
+import SearchFilterBar from "./SearchFilterBar.vue";
 import { useSearchStore } from "@/stores/search";
 import { useDownloadStore } from "@/stores/download";
 
@@ -68,13 +69,13 @@ const selectedCount = computed(() => selectedIds.value.size);
 const visibleRange = ref({ start: 0, end: 20 });
 
 const totalHeight = computed(() => {
-  const len = searchStore.results.length;
+  const len = searchStore.filteredResults.length;
   return len > 0 ? len * itemHeight.value - 8 : 0; // last item has no gap
 });
 
 const visibleItems = computed(() => {
   const { start, end } = visibleRange.value;
-  return searchStore.results.slice(start, end).map((song, i) => ({
+  return searchStore.filteredResults.slice(start, end).map((song, i) => ({
     song,
     originalIndex: start + i,
   }));
@@ -95,7 +96,7 @@ function updateVisibleRange() {
   const viewportHeight = el.clientHeight;
   const start = Math.max(0, Math.floor(scrollTop / itemHeight.value) - BUFFER);
   const end = Math.min(
-    searchStore.results.length,
+    searchStore.filteredResults.length,
     Math.ceil((scrollTop + viewportHeight) / itemHeight.value) + BUFFER
   );
   visibleRange.value = { start, end };
@@ -103,7 +104,7 @@ function updateVisibleRange() {
 
 // Watch for new results to re-measure and reset
 const originalLength = ref(0);
-watch(() => searchStore.results.length, async (len) => {
+watch(() => searchStore.filteredResults.length, async (len) => {
   if (len !== originalLength.value) {
     originalLength.value = len;
     await nextTick();
@@ -161,7 +162,9 @@ onUnmounted(() => {
 
     <template v-else-if="searchStore.results.length > 0">
       <div class="results-header">
-        <span v-if="!selectMode">搜索到 {{ searchStore.total }} 个结果</span>
+        <template v-if="!selectMode">
+          <span>搜索到 {{ searchStore.total }} 个结果</span>
+        </template>
         <template v-else>
           <button class="header-btn" @click="selectAll">
             <NIcon size="16"><CheckmarkDoneOutline /></NIcon>
@@ -180,6 +183,10 @@ onUnmounted(() => {
           <NIcon size="16"><CheckmarkDoneOutline /></NIcon>
           多选
         </button>
+      </div>
+      <SearchFilterBar v-if="!selectMode" />
+      <div v-if="searchStore.durationFilter !== 'all' && !selectMode" class="results-header">
+        <span>筛选显示 {{ searchStore.filteredResults.length }} 个结果</span>
       </div>
       <div
         class="song-list"

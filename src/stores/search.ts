@@ -1,7 +1,8 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
-import type { Song, SearchResponse } from "@/types";
+import { ref, computed } from "vue";
+import type { Song, SearchResponse, SearchOrder, DurationFilter } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
+import { parseDuration } from "@/utils/formatters";
 
 export const useSearchStore = defineStore("search", () => {
   const keyword = ref("");
@@ -12,6 +13,25 @@ export const useSearchStore = defineStore("search", () => {
   const loading = ref(false);
   const hasMore = ref(false);
   const error = ref("");
+  const sortOrder = ref<SearchOrder>("totalrank");
+  const durationFilter = ref<DurationFilter>("all");
+
+  function matchesDurationFilter(song: Song): boolean {
+    if (durationFilter.value === "all") return true;
+    const secs = parseDuration(song.duration);
+    switch (durationFilter.value) {
+      case "short": return secs > 0 && secs < 180;
+      case "medium": return secs >= 180 && secs <= 300;
+      case "long": return secs > 300 && secs <= 600;
+      case "very-long": return secs > 600;
+      default: return true;
+    }
+  }
+
+  const filteredResults = computed(() => {
+    if (durationFilter.value === "all") return results.value;
+    return results.value.filter(matchesDurationFilter);
+  });
 
   async function search(kw: string, p?: number) {
     if (!kw.trim()) return;
@@ -25,6 +45,7 @@ export const useSearchStore = defineStore("search", () => {
       const resp = await invoke<SearchResponse>("search_bilibili", {
         keyword: kw,
         page: searchPage,
+        order: sortOrder.value,
       });
       results.value = resp.results;
       page.value = resp.page;
@@ -49,6 +70,7 @@ export const useSearchStore = defineStore("search", () => {
       const resp = await invoke<SearchResponse>("search_bilibili", {
         keyword: keyword.value,
         page: nextPage,
+        order: sortOrder.value,
       });
       results.value.push(...resp.results);
       page.value = resp.page;
@@ -60,12 +82,26 @@ export const useSearchStore = defineStore("search", () => {
     }
   }
 
+  function setSortOrder(order: SearchOrder) {
+    if (order === sortOrder.value) return;
+    sortOrder.value = order;
+    if (keyword.value) {
+      search(keyword.value, 1);
+    }
+  }
+
+  function setDurationFilter(filter: DurationFilter) {
+    durationFilter.value = filter;
+  }
+
   function clear() {
     keyword.value = "";
     results.value = [];
     page.value = 1;
     total.value = 0;
     error.value = "";
+    sortOrder.value = "totalrank";
+    durationFilter.value = "all";
   }
 
   return {
@@ -77,8 +113,13 @@ export const useSearchStore = defineStore("search", () => {
     loading,
     hasMore,
     error,
+    sortOrder,
+    durationFilter,
+    filteredResults,
     search,
     loadMore,
+    setSortOrder,
+    setDurationFilter,
     clear,
   };
 });

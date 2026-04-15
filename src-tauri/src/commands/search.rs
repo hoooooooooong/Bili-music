@@ -6,6 +6,7 @@ use crate::error::AppResult;
 pub async fn search_bilibili(
     keyword: String,
     page: Option<u32>,
+    order: Option<String>,
     searcher: State<'_, BilibiliSearcher>,
 ) -> AppResult<crate::core::searcher::SearchResponse> {
     let page = page.unwrap_or(1);
@@ -14,7 +15,7 @@ pub async fn search_bilibili(
             "搜索关键词不能为空".into(),
         ));
     }
-    searcher.search(&keyword, page).await
+    searcher.search(&keyword, page, order.as_deref()).await
 }
 
 #[tauri::command]
@@ -91,6 +92,7 @@ pub async fn get_related(
             play_count_text: crate::core::searcher::format_play_count(play_count),
             cover_url: pic,
             description: String::new(),
+            pubdate: 0,
         });
     }
 

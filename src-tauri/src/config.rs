@@ -1,4 +1,5 @@
 pub const BILIBILI_SEARCH_URL: &str = "https://api.bilibili.com/x/web-interface/search/all/v2";
+pub const BILIBILI_VIDEO_SEARCH_URL: &str = "https://api.bilibili.com/x/web-interface/search/type";
 pub const BILIBILI_RELATED_URL: &str = "https://api.bilibili.com/x/web-interface/archive/related";
 pub const BILIBILI_VIEW_URL: &str = "https://api.bilibili.com/x/web-interface/view";
 pub const BILIBILI_PLAY_URL: &str = "https://api.bilibili.com/x/player/playurl";

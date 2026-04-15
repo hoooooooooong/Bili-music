@@ -236,6 +236,7 @@ pub async fn fetch_medialist_resources(
                     .and_then(|d| d.as_str())
                     .unwrap_or("")
                     .into(),
+                pubdate: item.get("pubtime").and_then(|p| p.as_i64()).unwrap_or(0),
             }
         })
         .collect();

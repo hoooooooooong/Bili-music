@@ -90,7 +90,7 @@ pub async fn start_download(
 
         // Search for video info
         let video_info = searcher_inner
-            .search(&bvid_clone, 1)
+            .search(&bvid_clone, 1, None)
             .await
             .ok()
             .and_then(|resp| resp.results.into_iter().find(|r| r.bvid == bvid_clone));

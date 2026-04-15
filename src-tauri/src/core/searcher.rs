@@ -34,6 +34,7 @@ pub struct SearchResult {
     pub play_count_text: String,
     pub cover_url: String,
     pub description: String,
+    pub pubdate: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -121,12 +122,23 @@ impl BilibiliSearcher {
         }
     }
 
-    pub async fn search(&self, keyword: &str, page: u32) -> AppResult<SearchResponse> {
-        let params = [("keyword", keyword), ("page", &page.to_string())];
+    pub async fn search(&self, keyword: &str, page: u32, order: Option<&str>) -> AppResult<SearchResponse> {
+        let use_video_search = order.is_some();
+        let mut params: Vec<(&str, String)> = vec![
+            ("keyword", keyword.to_string()),
+        ];
+        if use_video_search {
+            params.push(("search_type", "video".to_string()));
+            params.push(("order", order.unwrap().to_string()));
+        }
+        params.push(("page", page.to_string()));
+        let params: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
+
+        let url = if use_video_search { BILIBILI_VIDEO_SEARCH_URL } else { BILIBILI_SEARCH_URL };
 
         let resp = self
             .client
-            .get(BILIBILI_SEARCH_URL)
+            .get(url)
             .query(&params)
             .timeout(std::time::Duration::from_secs(10))
             .send()
@@ -142,28 +154,45 @@ impl BilibiliSearcher {
             return Err(AppError::Search(msg.into()));
         }
 
-        let result_groups = data
-            .get("data")
-            .and_then(|d| d.get("result"))
-            .and_then(|r| r.as_array())
-            .cloned()
-            .unwrap_or_default();
+        let (video_results, num_results) = if use_video_search {
+            // /search/type returns: { data: { result: [...], numResults: N } }
+            let items = data
+                .get("data")
+                .and_then(|d| d.get("result"))
+                .and_then(|r| r.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let total = data
+                .get("data")
+                .and_then(|d| d.get("numResults"))
+                .and_then(|n| n.as_u64())
+                .unwrap_or_else(|| items.len() as u64);
+            (items, total)
+        } else {
+            // /search/all/v2 returns grouped results
+            let result_groups = data
+                .get("data")
+                .and_then(|d| d.get("result"))
+                .and_then(|r| r.as_array())
+                .cloned()
+                .unwrap_or_default();
 
-        let mut video_results = Vec::new();
-        for group in &result_groups {
-            if group.get("result_type").and_then(|t| t.as_str()) == Some("video") {
-                if let Some(items) = group.get("data").and_then(|d| d.as_array()) {
-                    video_results = items.clone();
+            let mut items = Vec::new();
+            for group in &result_groups {
+                if group.get("result_type").and_then(|t| t.as_str()) == Some("video") {
+                    if let Some(arr) = group.get("data").and_then(|d| d.as_array()) {
+                        items = arr.clone();
+                    }
+                    break;
                 }
-                break;
             }
-        }
-
-        let num_results = data
-            .get("data")
-            .and_then(|d| d.get("numResults"))
-            .and_then(|n| n.as_u64())
-            .unwrap_or_else(|| video_results.len() as u64);
+            let total = data
+                .get("data")
+                .and_then(|d| d.get("numResults"))
+                .and_then(|n| n.as_u64())
+                .unwrap_or_else(|| items.len() as u64);
+            (items, total)
+        };
 
         if video_results.is_empty() {
             return Ok(SearchResponse {
@@ -380,6 +409,7 @@ impl BilibiliSearcher {
                     play_count_text: format_play_count(play_count),
                     cover_url,
                     description: desc,
+                    pubdate: item.get("pubdate").and_then(|p| p.as_i64()).unwrap_or(0),
                 }
             })
             .collect();
@@ -471,6 +501,7 @@ impl BilibiliSearcher {
                     play_count_text: format_play_count(play_count),
                     cover_url,
                     description: desc,
+                    pubdate: item.get("pubdate").and_then(|p| p.as_i64()).unwrap_or(0),
                 }
             })
             .collect();
@@ -866,6 +897,7 @@ impl BilibiliSearcher {
                 .and_then(|d| d.as_str())
                 .unwrap_or("")
                 .into(),
+            pubdate: item.get("pubdate").and_then(|p| p.as_i64()).unwrap_or(0),
         }
     }
 
@@ -914,6 +946,7 @@ impl BilibiliSearcher {
                 .and_then(|d| d.as_str())
                 .unwrap_or("")
                 .into(),
+            pubdate: item.get("pubdate").and_then(|p| p.as_i64()).unwrap_or(0),
         }
     }
 }
