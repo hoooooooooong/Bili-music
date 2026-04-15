@@ -105,6 +105,14 @@ pub async fn get_hot_ranking(
 }
 
 #[tauri::command]
+pub async fn get_now_playing(
+    bvid: String,
+    searcher: State<'_, BilibiliSearcher>,
+) -> AppResult<u64> {
+    searcher.get_now_playing(&bvid).await
+}
+
+#[tauri::command]
 pub async fn get_video_comments(
     bvid: String,
     page: Option<u32>,
@@ -136,6 +144,22 @@ pub async fn get_comment_replies(
 }
 
 #[tauri::command]
+pub async fn check_login() -> bool {
+    BilibiliSearcher::check_login()
+}
+
+#[tauri::command]
+pub async fn get_popular(
+    page: Option<u32>,
+    page_size: Option<u32>,
+    searcher: State<'_, BilibiliSearcher>,
+) -> AppResult<crate::core::searcher::SearchResponse> {
+    let page = page.unwrap_or(1);
+    let page_size = page_size.unwrap_or(20);
+    searcher.get_popular(page, page_size).await
+}
+
+#[tauri::command]
 pub async fn get_danmaku(
     bvid: String,
     searcher: State<'_, BilibiliSearcher>,
@@ -146,4 +170,11 @@ pub async fn get_danmaku(
         ));
     }
     searcher.get_danmaku(&bvid).await
+}
+
+#[tauri::command]
+pub async fn get_user_info(
+    searcher: State<'_, BilibiliSearcher>,
+) -> AppResult<crate::core::searcher::UserInfo> {
+    searcher.get_user_info().await
 }

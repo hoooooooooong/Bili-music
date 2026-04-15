@@ -16,6 +16,7 @@ const searchStore = useSearchStore();
 const player = usePlayerStore();
 const historyStore = useHistoryStore();
 const activeTab = ref<"search" | "favorites" | "history">("search");
+const welcomeKey = ref(0);
 
 useKeyboardShortcuts();
 
@@ -33,11 +34,16 @@ function handleSearch(keyword: string) {
 function playSong(song: Song) {
   player.playSong(song);
 }
+
+function handleLoginChanged() {
+  searchStore.keyword = "";
+  welcomeKey.value++;
+}
 </script>
 
 <template>
   <div class="home-page">
-    <AppHeader />
+    <AppHeader @login-changed="handleLoginChanged" />
 
     <div class="tab-bar">
       <button
@@ -69,6 +75,7 @@ function playSong(song: Song) {
     <div v-show="activeTab === 'search'" class="tab-content">
       <WelcomeSection
         v-if="!searchStore.keyword && !searchStore.loading"
+        :key="welcomeKey"
         @search="handleSearch"
       />
       <ResultGrid v-else />

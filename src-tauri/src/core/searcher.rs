@@ -1,4 +1,5 @@
 use reqwest::Client;
+use reqwest::cookie::CookieStore;
 use std::collections::HashMap;
 use std::sync::Arc;
 use regex::Regex;
@@ -82,6 +83,14 @@ pub struct Danmaku {
 #[serde(rename_all = "camelCase")]
 pub struct DanmakuResponse {
     pub danmaku: Vec<Danmaku>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserInfo {
+    pub mid: u64,
+    pub uname: String,
+    pub face: String,
 }
 
 #[derive(Clone)]
@@ -202,6 +211,185 @@ impl BilibiliSearcher {
         let item = data.get("data").ok_or_else(|| AppError::Search("获取视频详情数据为空".into()))?;
         let re_tag = Regex::new(r"<[^>]+>").unwrap();
         Ok(Self::parse_view_item(item, &re_tag))
+    }
+
+    /// Get current online viewer count for a video via /x/player/online/total
+    pub async fn get_now_playing(&self, bvid: &str) -> AppResult<u64> {
+        let cid = self.get_cid(bvid).await?;
+
+        let resp = self
+            .client
+            .get("https://api.bilibili.com/x/player/online/total")
+            .query(&[("bvid", bvid), ("cid", &cid.to_string())])
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+
+        let data: serde_json::Value = resp.json().await?;
+
+        let total = data
+            .get("data")
+            .and_then(|d| d.get("total"))
+            .and_then(|t| t.as_str())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        Ok(total)
+    }
+
+    /// Check if user is logged in by verifying SESSDATA cookie
+    pub fn check_login() -> bool {
+        let url = "https://bilibili.com".parse::<url::Url>().unwrap();
+        let cookies = super::downloader::BILI_JAR.cookies(&url);
+        if let Some(header) = cookies {
+            let s = header.to_str().unwrap_or("");
+            s.contains("SESSDATA=") && !s.contains("SESSDATA=;")
+        } else {
+            false
+        }
+    }
+
+    /// Get current logged-in user info via /x/web-interface/nav
+    pub async fn get_user_info(&self) -> AppResult<UserInfo> {
+        let resp = self
+            .client
+            .get("https://api.bilibili.com/x/web-interface/nav")
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+
+        let data: serde_json::Value = resp.json().await?;
+
+        if data.get("code").and_then(|c| c.as_i64()) != Some(0) {
+            return Err(AppError::Search("获取用户信息失败，请检查登录状态".into()));
+        }
+
+        let info = data.get("data").ok_or_else(|| AppError::Search("用户信息数据为空".into()))?;
+
+        Ok(UserInfo {
+            mid: info.get("mid").and_then(|m| m.as_u64()).unwrap_or(0),
+            uname: info.get("uname").and_then(|u| u.as_str()).unwrap_or("").to_string(),
+            face: info.get("face").and_then(|f| f.as_str()).unwrap_or("").to_string(),
+        })
+    }
+
+    /// Get music region (rid=3) videos from bilibili
+    pub async fn get_popular(&self, page: u32, page_size: u32) -> AppResult<SearchResponse> {
+        let params = [
+            ("rid", "3"),
+            ("ps", &page_size.to_string()),
+            ("pn", &page.to_string()),
+        ];
+
+        let resp = self
+            .client
+            .get(BILIBILI_REGION_DYNAMIC_URL)
+            .query(&params)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+
+        let data: serde_json::Value = resp.json().await?;
+
+        if data.get("code").and_then(|c| c.as_i64()) != Some(0) {
+            let msg = data
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("获取音乐区视频失败");
+            return Err(AppError::Search(msg.into()));
+        }
+
+        let list = data
+            .get("data")
+            .and_then(|d| d.get("archives"))
+            .and_then(|l| l.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let page_info = data
+            .get("data")
+            .and_then(|d| d.get("page"));
+
+        let total = page_info
+            .and_then(|p| p.get("count"))
+            .and_then(|t| t.as_u64())
+            .unwrap_or_else(|| list.len() as u64);
+
+        let re_tag = Regex::new(r"<[^>]+>").unwrap();
+        let results: Vec<SearchResult> = list
+            .iter()
+            .take(page_size as usize)
+            .map(|item| {
+                let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("");
+                let title = decode_html_entities(title);
+                let title = re_tag.replace_all(&title, "").to_string();
+
+                let mut cover_url = item
+                    .get("pic")
+                    .and_then(|p| p.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if cover_url.starts_with("//") {
+                    cover_url = format!("https:{}", cover_url);
+                }
+
+                let play_count = item
+                    .get("stat")
+                    .and_then(|s| s.get("view"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+
+                let author = item
+                    .get("owner")
+                    .and_then(|o| o.get("name"))
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let duration_str = item
+                    .get("duration")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("");
+                let duration = if let Ok(secs) = duration_str.parse::<u64>() {
+                    format!("{:02}:{:02}", secs / 60, secs % 60)
+                } else {
+                    let parts: Vec<&str> = duration_str.split(':').collect();
+                    if parts.len() == 2 {
+                        if let (Ok(m), Ok(s)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
+                            format!("{:02}:{:02}", m, s)
+                        } else {
+                            duration_str.to_string()
+                        }
+                    } else {
+                        duration_str.to_string()
+                    }
+                };
+
+                let desc = item
+                    .get("desc")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                SearchResult {
+                    bvid: item.get("bvid").and_then(|b| b.as_str()).unwrap_or("").into(),
+                    title: title.trim().into(),
+                    author,
+                    duration,
+                    play_count,
+                    play_count_text: format_play_count(play_count),
+                    cover_url,
+                    description: desc,
+                }
+            })
+            .collect();
+
+        Ok(SearchResponse {
+            results,
+            page,
+            total,
+            page_size: page_size as usize,
+        })
     }
 
     /// Get Bilibili music section (rid=3) hot ranking
