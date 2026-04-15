@@ -20,6 +20,7 @@ import {
   CloseOutline,
   TrashOutline,
   ChatbubblesOutline,
+  MusicalNotesOutline,
 } from "@vicons/ionicons5";
 import { usePlayerStore } from "@/stores/player";
 import { useFavoritesStore } from "@/stores/favorites";
@@ -85,6 +86,8 @@ const bgStyle = computed(() => {
 const showPlaylist = ref(false);
 const showComments = ref(false);
 const danmakuEnabled = ref(localStorage.getItem("danmaku-enabled") === "true");
+const nowPlaying = ref(0);
+let nowPlayingTimer: ReturnType<typeof setInterval> | null = null;
 const danmakuList = ref<Danmaku[]>([]);
 const fpListRef = ref<HTMLElement | null>(null);
 
@@ -157,8 +160,22 @@ watch(() => player.currentIndex, async (idx) => {
   items[idx]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 });
 
+watch(() => player.currentSong?.bvid, (bvid) => {
+  nowPlaying.value = 0;
+  fetchNowPlaying();
+});
+
 function handleKeydown(e: KeyboardEvent) {
   if (e.code === "Escape") emit("close");
+}
+
+async function fetchNowPlaying() {
+  if (!player.currentSong) return;
+  try {
+    nowPlaying.value = await invoke<number>("get_now_playing", { bvid: player.currentSong.bvid });
+  } catch {
+    nowPlaying.value = 0;
+  }
 }
 
 onMounted(async () => {
@@ -172,8 +189,14 @@ onMounted(async () => {
       danmakuList.value = [];
     }
   }
+  // Start now-playing refresh timer
+  fetchNowPlaying();
+  nowPlayingTimer = setInterval(fetchNowPlaying, 30000);
 });
-onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
+onUnmounted(() => {
+  window.removeEventListener("keydown", handleKeydown);
+  if (nowPlayingTimer) clearInterval(nowPlayingTimer);
+});
 </script>
 
 <template>
@@ -187,6 +210,10 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
         <div class="fp-header-info">
           <p class="fp-title">{{ player.currentSong?.title }}</p>
           <p class="fp-author">{{ player.currentSong?.author }}</p>
+          <p v-if="nowPlaying > 0" class="fp-now-playing">
+            <NIcon size="13"><MusicalNotesOutline /></NIcon>
+            {{ nowPlaying.toLocaleString() }} 人在听
+          </p>
         </div>
         <button
           class="fp-btn"
@@ -469,6 +496,20 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   font-size: 13px;
   color: rgba(255, 255, 255, 0.6);
   margin-top: 2px;
+}
+
+.fp-now-playing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 4px;
+}
+
+.fp-now-playing .n-icon {
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .fp-btn {

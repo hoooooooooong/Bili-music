@@ -8,6 +8,7 @@ pub const BILIBILI_COMMENT_URL: &str = "https://api.bilibili.com/x/v2/reply";
 pub const BILIBILI_REPLY_URL: &str = "https://api.bilibili.com/x/v2/reply/reply";
 pub const BILIBILI_MEDIALIST_URL: &str = "https://api.bilibili.com/x/v2/fav/folder";
 pub const BILIBILI_MEDIALIST_RESOURCE_URL: &str = "https://api.bilibili.com/x/v3/fav/resource/list";
+pub const BILIBILI_REGION_DYNAMIC_URL: &str = "https://api.bilibili.com/x/web-interface/dynamic/region";
 pub const BILIBILI_DANMAKU_SEG_URL: &str = "https://api.bilibili.com/x/v2/dm/web/seg.so";
 pub const BILIBILI_DANMAKU_VIEW_URL: &str = "https://api.bilibili.com/x/v2/dm/web/view.so";
 
