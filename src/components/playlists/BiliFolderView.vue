@@ -95,7 +95,7 @@ onMounted(() => fetchPage(1));
     </div>
 
     <div v-if="loading" class="loading-wrap">
-      <NSpin size="24" />
+      <NSpin :size="24" />
     </div>
 
     <div v-else-if="songs.length === 0" class="empty-state">

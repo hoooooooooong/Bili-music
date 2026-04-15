@@ -77,7 +77,7 @@ pub async fn fetch_medialist(uid: &str) -> AppResult<FavoritesFolderListResponse
         .iter()
         .map(|item| {
             // cover is an array of objects, take the first one's pic
-            let cover = item
+            let mut cover = item
                 .get("cover")
                 .and_then(|c| c.as_array())
                 .and_then(|arr| arr.first())
@@ -85,6 +85,9 @@ pub async fn fetch_medialist(uid: &str) -> AppResult<FavoritesFolderListResponse
                 .and_then(|p| p.as_str())
                 .unwrap_or("")
                 .to_string();
+            if cover.starts_with("//") {
+                cover = format!("https:{}", cover);
+            }
 
             FavoritesFolder {
                 id: item

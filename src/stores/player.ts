@@ -406,6 +406,6 @@ export const usePlayerStore = defineStore("player", () => {
   };
 }, {
   persist: {
-    paths: ['currentSong', 'playlist', 'currentIndex', 'playMode', '_savedCurrentTime', '_wasPlayingBeforeClose'],
-  },
+    pick: ['currentSong', 'playlist', 'currentIndex', 'playMode', '_savedCurrentTime', '_wasPlayingBeforeClose'],
+  } as any,
 });

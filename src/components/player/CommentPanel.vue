@@ -51,7 +51,7 @@ async function fetchComments(reset = false) {
       comments.value = res.comments;
       page.value = 1;
       // Clear reply states
-      for (const key of Object.keys(replyStates)) {
+      for (const key of Object.keys(replyStates) as unknown as number[]) {
         delete replyStates[key];
       }
     } else {
@@ -188,7 +188,7 @@ watch(
     isEnd.value = false;
     isLimited.value = false;
     error.value = "";
-    for (const key of Object.keys(replyStates)) {
+    for (const key of Object.keys(replyStates) as unknown as number[]) {
       delete replyStates[key];
     }
     await nextTick();

@@ -53,7 +53,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' https: data: asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data: asset:",
+      "csp": "default-src 'self'; img-src 'self' https: http: data: asset: http://asset.localhost bili-cover:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data: asset:",
       "assetProtocol": {
         "scope": ["$CACHE/**", "$TEMP/**"]
       }
