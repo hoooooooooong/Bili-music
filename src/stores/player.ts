@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import type { Song, PlayMode, LyricsData } from "@/types";
+import type { Song, PlayMode, LyricsData, VisualizerStyle } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { emit } from "@/utils/emitter";
@@ -58,6 +58,7 @@ export const usePlayerStore = defineStore("player", () => {
   const playError = ref("");
   const sleepTimerRemaining = ref(0);
   const sleepTimerTotal = ref(0);
+  const visualizerStyle = ref<VisualizerStyle>("bars");
   let _sleepTimerInterval: ReturnType<typeof setInterval> | null = null;
 
   // Persistence: throttled time save (every 3s) + pending seek for restore
@@ -171,6 +172,10 @@ export const usePlayerStore = defineStore("player", () => {
     _sleepTimerInterval = null;
     sleepTimerRemaining.value = 0;
     sleepTimerTotal.value = 0;
+  }
+
+  function setVisualizerStyle(style: VisualizerStyle) {
+    visualizerStyle.value = style;
   }
 
   function seek(time: number) {
@@ -387,6 +392,8 @@ export const usePlayerStore = defineStore("player", () => {
     playError,
     sleepTimerRemaining,
     sleepTimerTotal,
+    visualizerStyle,
+    setVisualizerStyle,
     setVolume,
     playSong,
     togglePlay,
@@ -406,6 +413,6 @@ export const usePlayerStore = defineStore("player", () => {
   };
 }, {
   persist: {
-    pick: ['currentSong', 'playlist', 'currentIndex', 'playMode', '_savedCurrentTime', '_wasPlayingBeforeClose'],
+    pick: ['currentSong', 'playlist', 'currentIndex', 'playMode', '_savedCurrentTime', '_wasPlayingBeforeClose', 'visualizerStyle'],
   } as any,
 });

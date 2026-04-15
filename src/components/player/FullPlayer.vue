@@ -21,7 +21,9 @@ import {
   TrashOutline,
   ChatbubblesOutline,
   MusicalNotesOutline,
+  ColorPaletteOutline,
 } from "@vicons/ionicons5";
+import type { VisualizerStyle } from "@/types";
 import { usePlayerStore } from "@/stores/player";
 import { useFavoritesStore } from "@/stores/favorites";
 import { useLyricOffsetsStore } from "@/stores/lyricOffsets";
@@ -86,6 +88,15 @@ const bgStyle = computed(() => {
 const showPlaylist = ref(false);
 const showComments = ref(false);
 const danmakuEnabled = ref(localStorage.getItem("danmaku-enabled") === "true");
+const showVisualizerMenu = ref(false);
+
+const visualizerStyles: { value: VisualizerStyle; label: string }[] = [
+  { value: "bars", label: "频谱柱" },
+  { value: "wave", label: "波形线" },
+  { value: "circle", label: "环形" },
+  { value: "dots", label: "粒子" },
+  { value: "mirror", label: "镜像" },
+];
 const nowPlaying = ref(0);
 let nowPlayingTimer: ReturnType<typeof setInterval> | null = null;
 const danmakuList = ref<Danmaku[]>([]);
@@ -437,6 +448,29 @@ onUnmounted(() => {
             @click="danmakuEnabled = !danmakuEnabled"
             title="弹幕"
           >弹</button>
+          <div
+            class="visualizer-area"
+            @mouseenter="showVisualizerMenu = true"
+            @mouseleave="showVisualizerMenu = false"
+          >
+            <button class="fp-ctrl" title="可视化样式">
+              <NIcon size="20" :color="showVisualizerMenu ? 'var(--accent-color)' : ''">
+                <ColorPaletteOutline />
+              </NIcon>
+            </button>
+            <Transition name="fade">
+              <div v-if="showVisualizerMenu" class="visualizer-menu">
+                <p class="visualizer-menu-title">可视化样式</p>
+                <button
+                  v-for="s in visualizerStyles"
+                  :key="s.value"
+                  class="visualizer-option"
+                  :class="{ active: player.visualizerStyle === s.value }"
+                  @click="player.setVisualizerStyle(s.value)"
+                >{{ s.label }}</button>
+              </div>
+            </Transition>
+          </div>
         </div>
       </div>
     </div>
@@ -753,6 +787,48 @@ onUnmounted(() => {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   margin-top: 4px;
   padding-top: 8px;
+  color: var(--accent-color);
+}
+
+.visualizer-area {
+  position: relative;
+}
+
+.visualizer-menu {
+  position: absolute;
+  bottom: 44px;
+  right: 0;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  border-radius: 10px;
+  padding: 8px 0;
+  min-width: 100px;
+}
+
+.visualizer-menu-title {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 2px 16px 6px;
+  margin: 0;
+}
+
+.visualizer-option {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.visualizer-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.visualizer-option.active {
   color: var(--accent-color);
 }
 

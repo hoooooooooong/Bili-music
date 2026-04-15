@@ -96,6 +96,7 @@ export interface Playlist {
 }
 
 export type PlayMode = "sequential" | "loop" | "random";
+export type VisualizerStyle = "bars" | "wave" | "circle" | "dots" | "mirror";
 
 export interface FavoritesFolder {
   id: number;
