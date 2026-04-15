@@ -500,6 +500,45 @@ impl BilibiliSearcher {
         Ok(aid)
     }
 
+    /// Get subtitle URL for a video via /x/player/wbi/v2
+    pub async fn get_subtitle_url(&self, bvid: &str) -> AppResult<Option<String>> {
+        let cid = self.get_cid(bvid).await?;
+
+        let resp = self
+            .client
+            .get(BILIBILI_PLAYER_URL)
+            .query(&[("bvid", bvid), ("cid", &cid.to_string())])
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await?;
+
+        let data: serde_json::Value = resp.json().await?;
+
+        let subtitles = data
+            .get("data")
+            .and_then(|d| d.get("subtitle"))
+            .and_then(|s| s.get("subtitles"))
+            .and_then(|s| s.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        for sub in &subtitles {
+            let url = sub.get("subtitle_url").and_then(|u| u.as_str()).unwrap_or("");
+            if !url.is_empty() {
+                let full_url = if url.starts_with("//") {
+                    format!("https:{}", url)
+                } else if url.starts_with("http") {
+                    url.to_string()
+                } else {
+                    format!("https://{}", url)
+                };
+                return Ok(Some(full_url));
+            }
+        }
+
+        Ok(None)
+    }
+
     async fn get_cid(&self, bvid: &str) -> AppResult<i64> {
         if let Some(&cid) = self.cid_cache.lock().unwrap().get(bvid) {
             return Ok(cid);

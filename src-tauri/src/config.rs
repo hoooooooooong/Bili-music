@@ -11,6 +11,7 @@ pub const BILIBILI_MEDIALIST_RESOURCE_URL: &str = "https://api.bilibili.com/x/v3
 pub const BILIBILI_REGION_DYNAMIC_URL: &str = "https://api.bilibili.com/x/web-interface/dynamic/region";
 pub const BILIBILI_DANMAKU_SEG_URL: &str = "https://api.bilibili.com/x/v2/dm/web/seg.so";
 pub const BILIBILI_DANMAKU_VIEW_URL: &str = "https://api.bilibili.com/x/v2/dm/web/view.so";
+pub const BILIBILI_PLAYER_URL: &str = "https://api.bilibili.com/x/player/wbi/v2";
 
 pub const NETEASE_SEARCH_URL: &str = "https://music.163.com/api/search/get";
 pub const NETEASE_LYRIC_URL: &str = "https://music.163.com/api/song/lyric";

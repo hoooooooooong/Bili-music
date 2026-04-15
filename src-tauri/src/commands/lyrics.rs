@@ -1,6 +1,6 @@
 use tauri::State;
 use crate::core::searcher::BilibiliSearcher;
-use crate::core::lyrics_client::LyricsClient;
+use crate::core::lyrics_client::{LyricsClient, fetch_subtitle};
 use crate::error::{AppError, AppResult};
 
 #[tauri::command]
@@ -19,7 +19,31 @@ pub async fn fetch_lyrics(
     let song_info = searcher.get_view_info(&bvid).await?;
 
     let keyword = format!("{} {}", song_info.title, song_info.author);
-    lyrics_client.fetch_lyrics(&keyword).await
+
+    // Parallel fetch: NetEase LRC + B站 subtitle
+    let lrc_future = lyrics_client.fetch_lyrics(&keyword);
+    let sub_future = searcher.get_subtitle_url(&bvid);
+
+    let (lrc_result, sub_result) = tokio::join!(lrc_future, sub_future);
+
+    let mut lyrics_data = lrc_result.unwrap_or_else(|_| crate::core::lyrics_client::LyricsData {
+        lyrics: vec![],
+        karaoke: None,
+        song: None,
+        artist: None,
+    });
+
+    // Try to fetch and parse subtitle for karaoke effect
+    if let Ok(Some(subtitle_url)) = sub_result {
+        match fetch_subtitle(&subtitle_url).await {
+            Ok(karaoke) if !karaoke.is_empty() => {
+                lyrics_data.karaoke = Some(karaoke);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(lyrics_data)
 }
 
 #[tauri::command]

@@ -11,9 +11,26 @@ pub struct LyricLine {
     pub text: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct KaraokeWord {
+    pub text: String,
+    pub start: f64,
+    pub end: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct KaraokeLine {
+    pub time: f64,
+    pub text: String,
+    pub words: Vec<KaraokeWord>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct LyricsData {
     pub lyrics: Vec<LyricLine>,
+    pub karaoke: Option<Vec<KaraokeLine>>,
     pub song: Option<String>,
     pub artist: Option<String>,
 }
@@ -37,6 +54,7 @@ impl LyricsClient {
         if songs.is_empty() {
             return Ok(LyricsData {
                 lyrics: vec![],
+                karaoke: None,
                 song: None,
                 artist: None,
             });
@@ -47,6 +65,7 @@ impl LyricsClient {
             if !lrc_text.is_empty() {
                 return Ok(LyricsData {
                     lyrics: parse_lrc(&lrc_text),
+                    karaoke: None,
                     song: Some(song_name.clone()),
                     artist: Some(artist.clone()),
                 });
@@ -55,6 +74,7 @@ impl LyricsClient {
 
         Ok(LyricsData {
             lyrics: vec![],
+            karaoke: None,
             song: None,
             artist: None,
         })
@@ -148,4 +168,81 @@ pub fn parse_lrc(lrc_text: &str) -> Vec<LyricLine> {
 
     lines.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap_or(std::cmp::Ordering::Equal));
     lines
+}
+
+pub async fn fetch_subtitle(subtitle_url: &str) -> AppResult<Vec<KaraokeLine>> {
+    let client = Client::builder()
+        .default_headers(netease_headers())
+        .build()
+        .expect("Failed to build HTTP client");
+
+    let resp = client
+        .get(subtitle_url)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await?;
+
+    let data: serde_json::Value = resp.json().await?;
+
+    let body = data
+        .get("body")
+        .and_then(|b| b.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    if body.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Group subtitle entries into lines based on timing gaps (> 0.8s gap = new line)
+    let mut all_entries: Vec<(f64, f64, String)> = Vec::new();
+    for entry in &body {
+        let content = entry.get("content").and_then(|c| c.as_str()).unwrap_or("").trim().to_string();
+        let from = entry.get("from").and_then(|f| f.as_f64()).unwrap_or(0.0);
+        let to = entry.get("to").and_then(|t| t.as_f64()).unwrap_or(0.0);
+        if !content.is_empty() {
+            all_entries.push((from, to, content));
+        }
+    }
+
+    if all_entries.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut karaoke_lines: Vec<KaraokeLine> = Vec::new();
+    let mut current_words: Vec<KaraokeWord> = Vec::new();
+    let mut line_from = all_entries[0].0;
+    let mut prev_to = all_entries[0].1;
+
+    for (from, to, content) in &all_entries {
+        // If there's a big gap (> 0.8s), start a new line
+        if *from - prev_to > 0.8 && !current_words.is_empty() {
+            let line_text: String = current_words.iter().map(|w| w.text.clone()).collect();
+            karaoke_lines.push(KaraokeLine {
+                time: line_from,
+                text: line_text,
+                words: current_words.clone(),
+            });
+            current_words.clear();
+            line_from = *from;
+        }
+        current_words.push(KaraokeWord {
+            text: content.clone(),
+            start: *from,
+            end: *to,
+        });
+        prev_to = *to;
+    }
+
+    // Push remaining words as last line
+    if !current_words.is_empty() {
+        let line_text: String = current_words.iter().map(|w| w.text.clone()).collect();
+        karaoke_lines.push(KaraokeLine {
+            time: line_from,
+            text: line_text,
+            words: current_words,
+        });
+    }
+
+    Ok(karaoke_lines)
 }

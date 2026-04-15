@@ -17,6 +17,7 @@ pub struct SharedPlayerState {
     pub current_song: Option<serde_json::Value>,
     pub cover_url: String,
     pub lyrics: Vec<serde_json::Value>,
+    pub karaoke: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

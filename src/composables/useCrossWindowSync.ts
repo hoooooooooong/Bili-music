@@ -20,6 +20,7 @@ export function useCrossWindowSync(
       currentSong: toValue(currentSong) ?? null,
       coverUrl: toValue(coverUrl),
       lyrics: lrc ? lrc.lyrics : [],
+      karaoke: lrc?.karaoke || [],
     };
     invoke("update_player_state", { newState: state }).catch(() => {});
   }

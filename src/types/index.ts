@@ -21,8 +21,21 @@ export interface LyricLine {
   text: string;
 }
 
+export interface KaraokeWord {
+  text: string;
+  start: number;
+  end: number;
+}
+
+export interface KaraokeLine {
+  time: number;
+  text: string;
+  words: KaraokeWord[];
+}
+
 export interface LyricsData {
   lyrics: LyricLine[];
+  karaoke?: KaraokeLine[];
   song?: string;
   artist?: string;
 }
