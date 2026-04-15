@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { NIcon, NSlider } from "naive-ui";
+import { invoke } from "@tauri-apps/api/core";
 import {
   PlayOutline,
   PauseOutline,
@@ -14,8 +15,11 @@ import {
   ExpandOutline,
   TimerOutline,
   ContractOutline,
+  TextOutline,
+  MusicalNotesOutline,
 } from "@vicons/ionicons5";
 import { usePlayerStore } from "@/stores/player";
+import { useSettingsStore } from "@/stores/settings";
 import { usePlayerControls } from "@/composables/usePlayerControls";
 import { useLyrics } from "@/composables/useLyrics";
 import { useWindowManager } from "@/composables/useWindowManager";
@@ -23,12 +27,39 @@ import { formatDuration } from "@/utils/formatters";
 
 const emit = defineEmits<{ toggleFull: []; togglePlaylist: [] }>();
 const player = usePlayerStore();
+const settingsStore = useSettingsStore();
 const { showVolume, showSleepTimer, sleepTimerDisplay, sleepTimerPresets, setSleepTimerAndClose, clearSleepTimerAndClose, toggleMute } = usePlayerControls();
 const { currentLineIndex, lyrics } = useLyrics();
 
 const currentLine = computed(() => {
   if (currentLineIndex.value < 0) return "";
   return lyrics.value[currentLineIndex.value]?.text ?? "";
+});
+
+const nowPlaying = ref(0);
+let nowPlayingTimer: ReturnType<typeof setInterval> | null = null;
+
+async function fetchNowPlaying() {
+  if (!player.currentSong) return;
+  try {
+    nowPlaying.value = await invoke<number>("get_now_playing", { bvid: player.currentSong.bvid });
+  } catch {
+    nowPlaying.value = 0;
+  }
+}
+
+watch(() => player.currentSong?.bvid, () => {
+  nowPlaying.value = 0;
+  fetchNowPlaying();
+});
+
+onMounted(() => {
+  fetchNowPlaying();
+  nowPlayingTimer = setInterval(fetchNowPlaying, 30000);
+});
+
+onBeforeUnmount(() => {
+  if (nowPlayingTimer) clearInterval(nowPlayingTimer);
 });
 
 const playModeIcon = computed(() => {
@@ -56,6 +87,11 @@ function onWheel(e: WheelEvent) {
 function enterMiniMode() {
   useWindowManager().enterMiniMode();
 }
+
+function toggleDesktopLyrics() {
+  useWindowManager().toggleDesktopLyrics();
+  settingsStore.desktopLyricsEnabled = !settingsStore.desktopLyricsEnabled;
+}
 </script>
 
 <template>
@@ -80,7 +116,13 @@ function enterMiniMode() {
           />
         </div>
         <div class="mini-info">
-          <p class="mini-title">{{ player.currentSong.title }}</p>
+          <p class="mini-title">
+            {{ player.currentSong.title }}
+            <span v-if="nowPlaying > 0" class="now-playing">
+              <NIcon size="12"><MusicalNotesOutline /></NIcon>
+              {{ nowPlaying.toLocaleString() }}人在听
+            </span>
+          </p>
           <div class="mini-lyric-wrapper">
             <Transition name="lyric-slide" mode="out-in">
               <p class="mini-lyric" :key="currentLineIndex">{{ currentLine }}</p>
@@ -179,6 +221,18 @@ function enterMiniMode() {
         <button class="ctrl-btn small" @click="emit('togglePlaylist')">
           <NIcon size="16"><ListOutline /></NIcon>
         </button>
+        <button
+          class="ctrl-btn small"
+          title="桌面歌词"
+          @click="toggleDesktopLyrics"
+        >
+          <NIcon
+            size="16"
+            :color="settingsStore.desktopLyricsEnabled ? 'var(--accent-color)' : ''"
+          >
+            <TextOutline />
+          </NIcon>
+        </button>
         <button class="ctrl-btn small" title="迷你模式" @click="enterMiniMode">
           <NIcon size="16"><ContractOutline /></NIcon>
         </button>
@@ -275,6 +329,19 @@ function enterMiniMode() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.now-playing {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
 }
 
 .mini-lyric-wrapper {
