@@ -73,6 +73,21 @@ function ensureWatcher() {
       }
     }
   );
+
+  // 用户拖动进度条 seek 时重置节流，确保歌词立即更新到目标位置
+  watch(() => player.seekVersion, () => {
+    sharedLastTime = -1;
+    const lyrics = player.lyrics?.lyrics || [];
+    if (lyrics.length > 0) {
+      const offset = player.currentSong
+        ? lyricOffsets.getOffset(player.currentSong.bvid)
+        : 0;
+      const idx = findCurrentLine(lyrics, player.currentTime - offset);
+      if (idx !== sharedCurrentLineIndex.value) {
+        sharedCurrentLineIndex.value = idx;
+      }
+    }
+  });
 }
 
 export function useLyrics() {

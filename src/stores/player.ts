@@ -61,6 +61,7 @@ export const usePlayerStore = defineStore("player", () => {
   const sleepTimerRemaining = ref(0);
   const sleepTimerTotal = ref(0);
   const visualizerStyle = ref<VisualizerStyle>("bars");
+  const seekVersion = ref(0);
   let _sleepTimerInterval: ReturnType<typeof setInterval> | null = null;
 
   // Preload state
@@ -215,17 +216,22 @@ export const usePlayerStore = defineStore("player", () => {
   }
 
   function seek(time: number) {
+    _isSeeking = true;
     audio.currentTime = time;
     currentTime.value = time;
+    seekVersion.value++;
   }
 
   let _seekTimer: ReturnType<typeof setTimeout> | null = null;
+  let _isSeeking = false;
 
   function seekByPercent(percent: number) {
     if (duration.value <= 0) return;
     const time = (percent / 100) * duration.value;
+    _isSeeking = true;
     // Update visual position immediately
     currentTime.value = time;
+    seekVersion.value++;
     // Debounce the actual audio seek
     if (_seekTimer) clearTimeout(_seekTimer);
     _seekTimer = setTimeout(() => {
@@ -396,6 +402,12 @@ export const usePlayerStore = defineStore("player", () => {
   }
 
   audio.addEventListener("timeupdate", () => {
+    if (_isSeeking) return;
+    currentTime.value = audio.currentTime;
+  });
+
+  audio.addEventListener("seeked", () => {
+    _isSeeking = false;
     currentTime.value = audio.currentTime;
   });
 
@@ -493,6 +505,7 @@ export const usePlayerStore = defineStore("player", () => {
     visualizerStyle,
     preloadedBvid,
     isPreloading,
+    seekVersion,
     setVisualizerStyle,
     setVolume,
     playSong,
