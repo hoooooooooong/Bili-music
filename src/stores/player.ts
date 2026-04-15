@@ -343,9 +343,15 @@ export const usePlayerStore = defineStore("player", () => {
     }
     loadingLyrics.value = true;
     try {
-      lyrics.value = await invoke<LyricsData>("fetch_lyrics", { bvid });
+      const result = await invoke<LyricsData>("fetch_lyrics", { bvid });
+      // API 返回期间用户可能已导入自定义歌词，不覆盖
+      if (!customLyrics.value[bvid]) {
+        lyrics.value = result;
+      }
     } catch {
-      lyrics.value = null;
+      if (!customLyrics.value[bvid]) {
+        lyrics.value = null;
+      }
     } finally {
       loadingLyrics.value = false;
     }

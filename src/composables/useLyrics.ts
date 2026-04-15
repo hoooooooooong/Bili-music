@@ -4,12 +4,62 @@ import { useLyricOffsetsStore } from "@/stores/lyricOffsets";
 import { findCurrentLine } from "@/utils/lrc-parser";
 import type { LyricLine } from "@/types";
 
-export function useLyrics() {
+// ── 模块级单例状态：所有组件共享 ──
+const sharedCurrentLineIndex = ref(-1);
+let sharedLastTime = -1;
+let _watcherSetup = false;
+
+function ensureWatcher() {
+  if (_watcherSetup) return;
+  _watcherSetup = true;
+
   const player = usePlayerStore();
   const lyricOffsets = useLyricOffsetsStore();
-  const currentLineIndex = ref(-1);
-  const userScrolled = ref(false);
-  const scrollTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+
+  watch(
+    () => player.currentTime,
+    (time) => {
+      if (time - sharedLastTime < 0.2 && sharedLastTime >= 0) return;
+      sharedLastTime = time;
+      const lyrics = player.lyrics?.lyrics || [];
+      const offset = player.currentSong
+        ? lyricOffsets.getOffset(player.currentSong.bvid)
+        : 0;
+      const idx = findCurrentLine(lyrics, time - offset);
+      if (idx !== sharedCurrentLineIndex.value) {
+        sharedCurrentLineIndex.value = idx;
+      }
+    }
+  );
+
+  watch(() => lyricOffsets.version, () => {
+    sharedLastTime = -1;
+    const player = usePlayerStore();
+    const lyricOffsets = useLyricOffsetsStore();
+    const lyrics = player.lyrics?.lyrics || [];
+    if (lyrics.length > 0) {
+      const offset = player.currentSong
+        ? lyricOffsets.getOffset(player.currentSong.bvid)
+        : 0;
+      const idx = findCurrentLine(lyrics, player.currentTime - offset);
+      if (idx !== sharedCurrentLineIndex.value) {
+        sharedCurrentLineIndex.value = idx;
+      }
+    }
+  });
+
+  // 切歌时重置
+  watch(() => player.currentSong?.bvid, () => {
+    sharedCurrentLineIndex.value = -1;
+    sharedLastTime = -1;
+  });
+}
+
+export function useLyrics() {
+  ensureWatcher();
+
+  const player = usePlayerStore();
+  const lyricOffsets = useLyricOffsetsStore();
 
   const lyrics = computed(() => player.lyrics?.lyrics || []);
   const hasLyrics = computed(() => lyrics.value.length > 0);
@@ -20,39 +70,9 @@ export function useLyrics() {
       : 0;
   });
 
-  function getOffset(): number {
-    return player.currentSong
-      ? lyricOffsets.getOffset(player.currentSong.bvid)
-      : 0;
-  }
-
-  let lastTime = -1;
-  watch(
-    () => player.currentTime,
-    (time) => {
-      if (userScrolled.value) return;
-      // Throttle: skip if time changed < 200ms
-      if (time - lastTime < 0.2 && lastTime >= 0) return;
-      lastTime = time;
-      const idx = findCurrentLine(lyrics.value, time - getOffset());
-      if (idx !== currentLineIndex.value) {
-        currentLineIndex.value = idx;
-      }
-    }
-  );
-
-  watch(() => lyricOffsets.version, () => {
-    lastTime = -1;
-    if (lyrics.value.length > 0) {
-      const idx = findCurrentLine(
-        lyrics.value,
-        player.currentTime - getOffset()
-      );
-      if (idx !== currentLineIndex.value) {
-        currentLineIndex.value = idx;
-      }
-    }
-  });
+  // 仅用于组件级的用户滚动状态（ScrollingLyrics 内部自行处理滚动暂停）
+  const userScrolled = ref(false);
+  const scrollTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 
   function onUserScroll() {
     userScrolled.value = true;
@@ -64,11 +84,11 @@ export function useLyrics() {
 
   function seekToLine(line: LyricLine) {
     player.seek(line.time);
-    currentLineIndex.value = lyrics.value.indexOf(line);
+    sharedCurrentLineIndex.value = lyrics.value.indexOf(line);
   }
 
   return {
-    currentLineIndex,
+    currentLineIndex: sharedCurrentLineIndex,
     lyrics,
     hasLyrics,
     currentOffset,
